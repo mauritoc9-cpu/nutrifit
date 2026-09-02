@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NutriFit — Nutrición, Hidratación y Entrenamiento Gamificado</title>
+<link rel="stylesheet" href="css/styles.css?v=7" />
+</head>
+<body>
+
+<!-- ==================================================================
+     PANTALLA: LOGIN
+==================================================================== -->
+<div id="screen-login" class="screen auth-screen">
+  <div class="auth-card">
+    <div class="brand-mark"><span class="dot"></span><span>NutriFit</span></div>
+    <h1>Bienvenido de vuelta</h1>
+    <p class="subtitle">Inicia sesión para continuar tu racha.</p>
+
+    <div id="login-error" class="form-error hidden"></div>
+
+    <form onsubmit="handleLogin(event)">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="login-email" required autocomplete="email" />
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" id="login-password" required autocomplete="current-password" />
+      </div>
+      <button type="submit" class="btn btn-primary">Iniciar sesión</button>
+    </form>
+
+    <p class="auth-switch">
+      <a href="#" onclick="showScreen('screen-recuperar');return false;">¿Olvidaste tu contraseña?</a>
+    </p>
+    <p class="auth-switch">¿No tienes cuenta? <a href="#" onclick="showScreen('screen-registro');return false;">Regístrate</a></p>
+  </div>
+</div>
+
+<!-- ==================================================================
+     PANTALLA: RECUPERAR CONTRASEÑA (pedir link)
+==================================================================== -->
+<div id="screen-recuperar" class="screen auth-screen hidden">
+  <div class="auth-card">
+    <div class="brand-mark"><span class="dot"></span><span>NutriFit</span></div>
+    <h1>Recuperar contraseña</h1>
+    <p class="subtitle">Ingresá tu email y te mandamos un link para elegir una nueva.</p>
+
+    <div id="recuperar-error" class="form-error hidden"></div>
+    <div id="recuperar-resultado" class="hidden" style="background:var(--color-lima-soft);color:var(--text-primary);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;font-size:13px;"></div>
+
+    <form onsubmit="handleSolicitarReset(event)">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="recuperar-email" required autocomplete="email" />
+      </div>
+      <button type="submit" class="btn btn-primary">Enviar link</button>
+    </form>
+
+    <p class="auth-switch"><a href="#" onclick="showScreen('screen-login');return false;">Volver a iniciar sesión</a></p>
+  </div>
+</div>
+
+<!-- ==================================================================
+     PANTALLA: ELEGIR NUEVA CONTRASEÑA (desde el link de reset)
+==================================================================== -->
+<div id="screen-nueva-password" class="screen auth-screen hidden">
+  <div class="auth-card">
+    <div class="brand-mark"><span class="dot"></span><span>NutriFit</span></div>
+    <h1>Elegí una nueva contraseña</h1>
+    <p class="subtitle">Mínimo 8 caracteres.</p>
+
+    <div id="nueva-password-error" class="form-error hidden"></div>
+
+    <form onsubmit="handleResetearPassword(event)">
+      <input type="hidden" id="nueva-password-token" />
+      <div class="field">
+        <label>Nueva contraseña</label>
+        <input type="password" id="nueva-password-input" minlength="8" required autocomplete="new-password" />
+      </div>
+      <button type="submit" class="btn btn-primary">Guardar nueva contraseña</button>
+    </form>
+
+    <p class="auth-switch"><a href="#" onclick="showScreen('screen-login');return false;">Volver a iniciar sesión</a></p>
+  </div>
+</div>
+
+<!-- ==================================================================
+     PANTALLA: REGISTRO
+==================================================================== -->
+<div id="screen-registro" class="screen auth-screen hidden">
+  <div class="auth-card">
+    <div class="brand-mark"><span class="dot"></span><span>NutriFit</span></div>
+    <h1>Crea tu cuenta</h1>
+    <p class="subtitle">Empieza tu camino hacia mejores hábitos.</p>
+
+    <div id="reg-error" class="form-error hidden"></div>
+
+    <form onsubmit="handleRegistro(event)">
+      <div class="field">
+        <label>Nombre completo</label>
+        <input type="text" id="reg-nombre" required />
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="reg-email" required autocomplete="email" />
+      </div>
+      <div class="field">
+        <label>Contraseña (mínimo 8 caracteres)</label>
+        <input type="password" id="reg-password" minlength="8" required autocomplete="new-password" />
+      </div>
+      <button type="submit" class="btn btn-primary">Crear cuenta</button>
+    </form>
+
+    <p class="auth-switch">¿Ya tienes cuenta? <a href="#" onclick="showScreen('screen-login');return false;">Inicia sesión</a></p>
+  </div>
+</div>
+
+<!-- ==================================================================
+     PANTALLA: ONBOARDING WIZARD (7 pasos)
+==================================================================== -->
+<div id="screen-onboarding" class="screen ob-screen hidden">
+  <div class="ob-card">
+
+    <!-- Header con progreso — oculto en objetivo y resumen -->
+    <div class="ob-header" id="ob-header">
+      <div class="ob-progress-bar">
+        <span data-segment="biometria"></span><span data-segment="actividad"></span><span data-segment="dieta"></span><span data-segment="alergias"></span>
+      </div>
+      <div class="ob-chips" id="ob-chips">
+        <span class="ob-chip" data-chip="biometria">Información básica</span>
+        <span class="ob-chip" data-chip="actividad">Nivel de actividad</span>
+        <span class="ob-chip" data-chip="dieta">Dieta</span>
+        <span class="ob-chip" data-chip="alergias">Alergias</span>
+      </div>
+    </div>
+
+    <!-- Paso: Objetivo principal -->
+    <div class="ob-step active" id="ob-step-objetivo">
+      <h1 class="ob-title">¡Hola! 👋<br>¿Cuál es tu objetivo principal?</h1>
+      <div class="ob-options" id="ob-options-objetivo">
+        <label class="ob-radio-card"><input type="radio" name="objetivo" value="perder_grasa" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon">🔥</span><span class="ob-radio-label">Perder peso</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="objetivo" value="mantener_peso" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon">⚖️</span><span class="ob-radio-label">Mantener peso</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="objetivo" value="ganar_musculo" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon">💪</span><span class="ob-radio-label">Ganar músculo</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="objetivo" value="monitorear_salud" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon">🩺</span><span class="ob-radio-label">Monitorear dieta por condición de salud</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="objetivo" value="mejorar_habitos" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon">🚀</span><span class="ob-radio-label">Mejorar mis hábitos alimenticios</span><span class="ob-radio-dot"></span></label>
+      </div>
+      <div class="ob-nav"><button class="btn btn-primary" id="ob-btn-objetivo" disabled onclick="obGoTo('biometria')">Continuar →</button></div>
+    </div>
+
+    <!-- Paso: Información básica -->
+    <div class="ob-step" id="ob-step-biometria">
+      <h2 class="ob-title" style="font-size:22px;">Contanos un poco de vos</h2>
+      <p class="ob-subtitle">Lo usamos para calcular tu plan nutricional personalizado.</p>
+      <div class="field">
+        <label>Edad</label>
+        <input type="number" id="ob-edad" min="12" max="100" required />
+      </div>
+      <div class="field">
+        <label>Género</label>
+        <select id="ob-genero">
+          <option value="masculino">Masculino</option>
+          <option value="femenino">Femenino</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Peso actual (kg)</label>
+        <input type="number" step="0.1" id="ob-peso" required />
+      </div>
+      <div class="field">
+        <label>Peso objetivo (kg) — opcional</label>
+        <input type="number" step="0.1" id="ob-peso-objetivo" />
+      </div>
+      <div class="field">
+        <label>Altura (cm)</label>
+        <input type="number" step="0.1" id="ob-altura" required />
+      </div>
+      <div class="ob-nav">
+        <button class="btn btn-ghost" onclick="obGoTo('objetivo')">Atrás</button>
+        <button class="btn btn-primary" onclick="obSubmitBiometria()">Continuar →</button>
+      </div>
+    </div>
+
+    <!-- Paso: Feedback motivacional -->
+    <div class="ob-step" id="ob-step-feedback">
+      <div class="ob-feedback-icon">🎯</div>
+      <h1 class="ob-title" id="ob-feedback-msg" style="text-align:center;"></h1>
+      <div class="ob-nav"><button class="btn btn-primary" onclick="obGoTo('actividad')">Continuar →</button></div>
+    </div>
+
+    <!-- Paso: Nivel de actividad -->
+    <div class="ob-step" id="ob-step-actividad">
+      <h2 class="ob-title" style="font-size:22px;">¿Qué tan activo sos?</h2>
+      <div class="ob-options" id="ob-options-actividad">
+        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="sedentario" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon">🛋️</span><span class="ob-radio-label">Sedentario</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="ligero" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon">🚶</span><span class="ob-radio-label">Ligero</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="moderado" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon">🏃</span><span class="ob-radio-label">Moderado</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="muy_activo" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon">🔥</span><span class="ob-radio-label">Muy activo</span><span class="ob-radio-dot"></span></label>
+      </div>
+      <p class="ob-subtitle" style="margin:18px 0 10px;">¿Dónde entrenás normalmente?</p>
+      <div class="ob-options" id="ob-options-lugar">
+        <label class="ob-radio-card"><input type="radio" name="lugar_entreno" value="casa" onchange="obSelect('lugar_entreno', this.value)"><span class="ob-radio-icon">🏠</span><span class="ob-radio-label">Casa (sin equipo)</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="lugar_entreno" value="gimnasio" onchange="obSelect('lugar_entreno', this.value)"><span class="ob-radio-icon">🏋️</span><span class="ob-radio-label">Gimnasio</span><span class="ob-radio-dot"></span></label>
+      </div>
+      <div class="ob-nav">
+        <button class="btn btn-ghost" onclick="obGoTo('feedback')">Atrás</button>
+        <button class="btn btn-primary" id="ob-btn-actividad" disabled onclick="obGoTo('dieta')">Continuar →</button>
+      </div>
+    </div>
+
+    <!-- Paso: Tipo de dieta -->
+    <div class="ob-step" id="ob-step-dieta">
+      <h2 class="ob-title" style="font-size:22px;">¿Cómo es tu alimentación?</h2>
+      <div class="ob-options" id="ob-options-dieta">
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="omnivora" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🍽️</span><span class="ob-radio-label">Normal / Omnívora</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="vegetariana" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🥦</span><span class="ob-radio-label">Vegetariana</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="vegana" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🌱</span><span class="ob-radio-label">Vegana</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="pescatariana" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🐟</span><span class="ob-radio-label">Pescatariana</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="keto" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🥑</span><span class="ob-radio-label">Keto</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="sin_gluten" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🌾</span><span class="ob-radio-label">Sin Gluten</span><span class="ob-radio-dot"></span></label>
+      </div>
+      <div class="ob-nav">
+        <button class="btn btn-ghost" onclick="obGoTo('actividad')">Atrás</button>
+        <button class="btn btn-primary" id="ob-btn-dieta" disabled onclick="obGoTo('alergias')">Continuar →</button>
+      </div>
+    </div>
+
+    <!-- Paso: Alergias e intolerancias -->
+    <div class="ob-step" id="ob-step-alergias">
+      <h2 class="ob-title" style="font-size:22px;">¿Alguna alergia o condición médica?</h2>
+      <p class="ob-subtitle">Elegí todas las que apliquen.</p>
+      <div class="ob-options ob-options-multi" id="ob-options-alergias">
+        <label class="ob-check-chip"><input type="checkbox" value="celiaco" onchange="obToggleAlergia(this)"><span>🌾 Celíaco / Sin TACC</span></label>
+        <label class="ob-check-chip"><input type="checkbox" value="lactosa" onchange="obToggleAlergia(this)"><span>🥛 Intolerancia a la Lactosa</span></label>
+        <label class="ob-check-chip"><input type="checkbox" value="frutos_secos" onchange="obToggleAlergia(this)"><span>🥜 Frutos Secos</span></label>
+        <label class="ob-check-chip"><input type="checkbox" value="mariscos" onchange="obToggleAlergia(this)"><span>🦐 Mariscos</span></label>
+        <label class="ob-check-chip"><input type="checkbox" value="huevo" onchange="obToggleAlergia(this)"><span>🥚 Huevo</span></label>
+        <label class="ob-check-chip"><input type="checkbox" value="diabetes" onchange="obToggleAlergia(this)"><span>💉 Diabetes</span></label>
+        <label class="ob-check-chip"><input type="checkbox" value="hipertension" onchange="obToggleAlergia(this)"><span>❤️ Hipertensión</span></label>
+        <label class="ob-check-chip"><input type="checkbox" value="ninguna" onchange="obToggleAlergia(this)"><span>✅ Ninguna</span></label>
+      </div>
+      <div class="ob-nav">
+        <button class="btn btn-ghost" onclick="obGoTo('dieta')">Atrás</button>
+        <button class="btn btn-primary" onclick="obSubmitFinal()">Generar mi plan →</button>
+      </div>
+    </div>
+
+    <!-- Paso: Resumen final -->
+    <div class="ob-step" id="ob-step-resumen">
+      <h1 class="ob-title" id="ob-resumen-titulo" style="text-align:center;">¡Felicidades!</h1>
+      <p class="ob-subtitle" style="text-align:center;">Tu plan está listo. Aquí están tus metas nutricionales diarias.</p>
+
+      <div class="ring-main" id="ring-calorias"></div>
+
+      <div class="rings-grid" id="rings-macros"></div>
+
+      <div class="ob-trophy" id="ob-trophy">🏆</div>
+
+      <div class="ob-nav"><button class="btn btn-primary" onclick="obFinish()">Empecemos →</button></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================================================================
+     APP PRINCIPAL (post-login) — Sidebar (PC) + Bottom Nav (Móvil)
+==================================================================== -->
+<div id="screen-app" class="screen hidden">
+  <div class="app-shell">
+
+    <!-- Sidebar Desktop -->
+    <aside class="sidebar">
+      <div class="brand-mark"><span class="dot"></span><span>NutriFit</span></div>
+
+      <ul class="nav-list">
+        <li class="nav-item active" data-view="progreso" onclick="loadView('progreso')">
+          <span class="icon">🧑‍🚀</span> Mi Progreso
+        </li>
+        <li class="nav-item" data-view="nutricion" onclick="loadView('nutricion')">
+          <span class="icon">🥗</span> Nutrición
+        </li>
+        <li class="nav-item" data-view="escaner" onclick="loadView('escaner')">
+          <span class="icon">📷</span> Escáner IA
+        </li>
+        <li class="nav-item" data-view="ranking" onclick="loadView('ranking')">
+          <span class="icon">🏆</span> Ranking & Tienda
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <div class="theme-toggle">
+          <span>Modo oscuro</span>
+          <div class="theme-toggle-switch" onclick="toggleTheme()"></div>
+        </div>
+        <button class="nav-item" style="width:100%;" onclick="abrirModalEditarPerfil()">
+          <span class="icon">⚙️</span> Editar perfil
+        </button>
+        <button class="nav-item" id="btn-recordatorios" style="width:100%;" onclick="toggleRecordatorios()">
+          <span class="icon">🔕</span> Activar recordatorios
+        </button>
+        <div class="user-chip">
+          <div class="avatar-mini">NF</div>
+          <div class="info">
+            <div class="name">Usuario</div>
+            <div class="level">Nivel 1</div>
+          </div>
+          <button class="logout-btn" onclick="handleLogout()">Salir</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Contenido principal -->
+    <main class="main-content">
+      <div id="view-progreso" class="view active"></div>
+      <div id="view-nutricion" class="view"></div>
+      <div id="view-escaner" class="view"></div>
+      <div id="view-ranking" class="view"></div>
+    </main>
+  </div>
+
+  <!-- Bottom Nav Móvil -->
+  <nav class="bottom-nav">
+    <div class="nav-item active" data-view="progreso" onclick="loadView('progreso')">
+      <span class="icon">🧑‍🚀</span> Progreso
+    </div>
+    <div class="nav-item" data-view="nutricion" onclick="loadView('nutricion')">
+      <span class="icon">🥗</span> Nutrición
+    </div>
+    <div class="nav-item" data-view="escaner" onclick="loadView('escaner')">
+      <span class="icon">📷</span> Escáner
+    </div>
+    <div class="nav-item" data-view="ranking" onclick="loadView('ranking')">
+      <span class="icon">🏆</span> Ranking
+    </div>
+  </nav>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="js/api.js?v=7"></script>
+<script src="js/auth.js?v=7"></script>
+<script src="js/app.js?v=7"></script>
+</body>
+</html>

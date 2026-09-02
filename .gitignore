@@ -1,0 +1,25 @@
+.env 
+# Variables de entorno
+.env
+.env.local
+.env.*.local
+
+# Dependencias
+node_modules/
+vendor/
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Configuración de XAMPP / builds
+/dist
+/build
+
+# Editor / IDE
+.vscode/
+.idea/
