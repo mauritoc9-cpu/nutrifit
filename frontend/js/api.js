@@ -2,7 +2,7 @@
  * NutriFit — Capa de comunicación con la API PHP.
  * Ajusta API_BASE si tu proyecto vive en otra ruta dentro de XAMPP/htdocs.
  */
-const API_BASE = '/nutrifittwo/backend/api';
+const API_BASE = '/backend/api';
 
 async function apiRequest(path, { method = 'GET', body = null } = {}) {
   const options = {
