@@ -1,27 +1,14 @@
-<?php
+ <?php
+
 /**
- * NutriFit — Conexión a la base de datos (PDO)
- * Compatible con desarrollo local (XAMPP) y producción (Heroku).
+ * NutriFit — Conexión PDO
+ * Producción: JawsDB en Heroku
+ * Local: MySQL de XAMPP
  */
 
 class Database
 {
-    private string $host;
-    private string $dbName;
-    private string $username;
-    private string $password;
-    private string $charset = 'utf8mb4';
     private ?PDO $conn = null;
-
-    public function __construct()
-    {
-        // En Heroku usa variables de entorno.
-        // En local mantiene automáticamente la configuración de XAMPP.
-        $this->host = getenv('DB_HOST') ?: '127.0.0.1';
-        $this->dbName = getenv('DB_NAME') ?: 'nutrifit_db';
-        $this->username = getenv('DB_USER') ?: 'root';
-        $this->password = getenv('DB_PASSWORD') ?: '';
-    }
 
     public function getConnection(): PDO
     {
@@ -29,23 +16,46 @@ class Database
             return $this->conn;
         }
 
-        $dsn = "mysql:host={$this->host};dbname={$this->dbName};charset={$this->charset}";
+        // Heroku / JawsDB
+        $jawsUrl = getenv('JAWSDB_URL');
+
+        if ($jawsUrl) {
+            $db = parse_url($jawsUrl);
+
+            $host = $db['host'];
+            $port = $db['port'] ?? 3306;
+            $username = $db['user'];
+            $password = $db['pass'];
+            $dbName = ltrim($db['path'], '/');
+        } else {
+            // Desarrollo local con XAMPP
+            $host = '127.0.0.1';
+            $port = 3306;
+            $username = 'root';
+            $password = '';
+            $dbName = 'nutrifit_db';
+        }
+
+        $dsn = "mysql:host={$host};port={$port};dbname={$dbName};charset=utf8mb4";
 
         try {
-            $this->conn = new PDO($dsn, $this->username, $this->password, [
+            $this->conn = new PDO($dsn, $username, $password, [
                 PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
             ]);
+
+            return $this->conn;
+
         } catch (PDOException $e) {
             http_response_code(500);
+
             echo json_encode([
                 'success' => false,
-                'message' => 'Error de conexión a la base de datos.',
+                'message' => 'Error de conexión a la base de datos.'
             ]);
+
             exit;
         }
-
-        return $this->conn;
     }
 }
