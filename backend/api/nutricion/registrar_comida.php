@@ -76,7 +76,7 @@ $resultadoXP = $xpSystem->otorgarXP($usuarioId, SistemaXP::XP_COMIDA);
 
 respond(true, [
     'registro' => [
-        'alimento'       => $alimento['nombre'],
+        'alimento'       => $alimento['nombre_mostrado'] ?? $alimento['nombre'],
         'gramos'         => $gramos,
         'calorias'       => $calorias,
         'proteinas'      => $proteinas,

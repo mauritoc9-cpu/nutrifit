@@ -1,0 +1,24 @@
+<svg viewBox="0 0 400 700" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Remera NutriFit — capa "remera" (ítem gratuito, desbloqueado desde el
+    inicio): blanca, manga corta, corte deportivo, logo oficial de NutriFit
+    centrado en el pecho. Mismo viewBox "0 0 400 700" que el resto de las
+    capas, calza sobre cuerpo-base.svg sin ajustes.
+  -->
+
+  <!-- manga izquierda -->
+  <path d="M132,222 Q108,228 100,262 L96,300 Q95,308 104,309 L122,309 Q128,308 127,300 L131,266 Q133,240 148,226 Z"
+        fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2" />
+  <!-- manga derecha -->
+  <path d="M268,222 Q292,228 300,262 L304,300 Q305,308 296,309 L278,309 Q272,308 273,300 L269,266 Q267,240 252,226 Z"
+        fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2" />
+  <!-- torso -->
+  <path d="M138,222 Q138,212 150,210 L250,210 Q262,212 262,222 L257,420 Q255,436 236,438 L164,438 Q145,436 143,420 Z"
+        fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2" />
+  <!-- pliegue lateral sutil -->
+  <path d="M143,420 Q145,436 164,438 L172,438 L160,240 Q150,250 145,300 Z" fill="#EAF0F6" opacity="0.7" />
+  <!-- cuello redondo -->
+  <path d="M180,213 Q200,232 220,213" fill="none" stroke="#D8E1EC" stroke-width="3" />
+  <!-- logo oficial de NutriFit, centrado en el pecho -->
+  <image href="../logo/nutrifit-logo-icon.png" x="170" y="250" width="60" height="60" />
+</svg>

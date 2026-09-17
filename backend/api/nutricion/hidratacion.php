@@ -36,4 +36,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     respond(true, ['registro' => $registro, 'xp' => $xpOtorgado], 'Vaso de agua registrado.');
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+    // Deshacer el último vaso de hoy (nunca baja de 0). No revierte el XP
+    // ya otorgado — mismo criterio que eliminar un registro de comida
+    // (registrar_comida.php DELETE), que tampoco lo hace.
+    $db->prepare(
+        'UPDATE registros_hidratacion SET vasos = GREATEST(0, vasos - 1)
+         WHERE usuario_id = :uid AND fecha = CURDATE()'
+    )->execute(['uid' => $usuarioId]);
+
+    $stmt = $db->prepare('SELECT vasos, meta_vasos FROM registros_hidratacion WHERE usuario_id = :uid AND fecha = CURDATE()');
+    $stmt->execute(['uid' => $usuarioId]);
+    $registro = $stmt->fetch() ?: ['vasos' => 0, 'meta_vasos' => 8];
+
+    respond(true, ['registro' => $registro], 'Vaso descontado.');
+}
+
 respond(false, null, 'Método no permitido.', 405);

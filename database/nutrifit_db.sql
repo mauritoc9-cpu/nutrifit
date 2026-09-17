@@ -4,10 +4,7 @@
 -- Codificación: utf8mb4 (soporte emojis para insignias, títulos, etc.)
 -- =====================================================================
 
-CREATE DATABASE IF NOT EXISTS nutrifit_db
-  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-USE nutrifit_db;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -271,6 +268,7 @@ INSERT INTO ejercicios (rutina_id, nombre, series, repeticiones, video_demo, ord
 (4, 'Zancadas con mancuernas', 3, '12 por pierna', NULL, 3);
 
 INSERT INTO tienda_items (nombre, tipo, costo_xp, costo_coins, nivel_requerido, imagen_asset) VALUES
+('Remera NutriFit', 'ropa_avatar', 0, 0, 0, 'avatar/remeras/remera-nutrifit.svg'),
 ('Camiseta Neón Verde', 'ropa_avatar', 0, 150, 2, 'camiseta_verde.png'),
 ('Aura de Hidratación', 'aura', 0, 300, 4, 'aura_azul.png'),
 ('Título: "Disciplinado"', 'titulo', 500, 0, 3, NULL),

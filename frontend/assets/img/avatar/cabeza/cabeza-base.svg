@@ -1,0 +1,39 @@
+<svg viewBox="0 0 400 700" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Cabeza base del avatar NutriFit — capa "cabeza" (orejas, cuello, cráneo
+    y rasgos faciales). Pieza independiente del cuerpo, mismo viewBox
+    "0 0 400 700" que el resto de las capas.
+  -->
+
+  <!-- orejas -->
+  <ellipse cx="138" cy="152" rx="12" ry="17" fill="#F2B48C" />
+  <ellipse cx="262" cy="152" rx="12" ry="17" fill="#F2B48C" />
+  <ellipse cx="140" cy="152" rx="5" ry="9" fill="#E7A876" />
+  <ellipse cx="260" cy="152" rx="5" ry="9" fill="#E7A876" />
+
+  <!-- cuello -->
+  <rect x="180" y="190" width="40" height="38" rx="10" fill="#E7A876" />
+
+  <!-- cráneo -->
+  <ellipse cx="200" cy="148" rx="58" ry="62" fill="#F6C39C" />
+  <!-- sombra sutil de mejilla/mandíbula -->
+  <path d="M150,150 Q148,190 178,206 Q160,188 152,152 Z" fill="#E7A876" opacity="0.45" />
+
+  <!-- cejas -->
+  <path d="M164,128 Q176,120 190,126" stroke="#5C3A22" stroke-width="5" fill="none" stroke-linecap="round" />
+  <path d="M236,128 Q224,120 210,126" stroke="#5C3A22" stroke-width="5" fill="none" stroke-linecap="round" />
+
+  <!-- ojos -->
+  <ellipse cx="178" cy="146" rx="10" ry="12" fill="#FFFFFF" />
+  <ellipse cx="222" cy="146" rx="10" ry="12" fill="#FFFFFF" />
+  <circle cx="180" cy="148" r="6" fill="#2B2117" />
+  <circle cx="220" cy="148" r="6" fill="#2B2117" />
+  <circle cx="182.5" cy="145" r="2" fill="#FFFFFF" />
+  <circle cx="222.5" cy="145" r="2" fill="#FFFFFF" />
+
+  <!-- nariz -->
+  <path d="M198,152 Q195,164 200,168 Q204,169 206,166" stroke="#D89868" stroke-width="3" fill="none" stroke-linecap="round" />
+
+  <!-- boca -->
+  <path d="M180,182 Q200,198 220,182" stroke="#8A4A34" stroke-width="4.5" fill="none" stroke-linecap="round" />
+</svg>

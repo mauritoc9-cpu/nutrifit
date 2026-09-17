@@ -1,0 +1,16 @@
+<svg viewBox="0 0 400 700" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Pelo corto — capa "pelo", primer peinado del sistema (habrá más:
+    largo, rulos, degradado, premium, legendario). Mismo viewBox
+    "0 0 400 700", calza sobre cabeza-base.svg sin ajustes.
+  -->
+  <path d="M138,150 C136,100 165,78 200,78 C235,78 264,100 262,150
+           C255,125 230,105 200,105 C170,105 145,125 138,150 Z" fill="#4A3222" />
+  <!-- sombra/profundidad -->
+  <path d="M138,150 C136,110 158,90 182,82 C160,96 148,120 146,148 Z" fill="#3A2719" opacity="0.7" />
+  <!-- brillo sutil -->
+  <path d="M205,84 Q230,90 246,116" stroke="#6B4A30" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.6" />
+  <!-- patillas -->
+  <path d="M138,150 Q136,166 142,178 Q138,164 140,150 Z" fill="#4A3222" />
+  <path d="M262,150 Q264,166 258,178 Q262,164 260,150 Z" fill="#4A3222" />
+</svg>

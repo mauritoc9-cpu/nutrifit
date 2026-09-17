@@ -2,45 +2,44 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../config/bootstrap.php';
+require_once __DIR__ . '/../../classes/RegistroActividadRepository.php';
+require_once __DIR__ . '/../../classes/CalculadoraActividad.php';
 require_once __DIR__ . '/../../classes/SistemaXP.php';
+
+/**
+ * Wrapper de compatibilidad: el frontend actual (pedómetro por
+ * acelerómetro + carga manual rápida de "+500 pasos") sigue llamando a
+ * este mismo endpoint con el mismo contrato de siempre. Por dentro ya no
+ * usa la tabla vieja `registros_pasos` — lee y escribe en
+ * `registros_actividad` (tipo "caminata", vía el upsert de
+ * RegistroActividadRepository::sumarPasosLocal) para que no haya dos
+ * fuentes de verdad. `registros_pasos` queda como respaldo histórico,
+ * sin que nada vuelva a escribirle.
+ */
 
 $usuarioId = requireAuth();
 $db = (new Database())->getConnection();
+$repo = new RegistroActividadRepository($db);
+$tipoCaminata = $repo->obtenerTipoPorClave('caminata');
 
-/**
- * Estimaciones estándar (no requieren wearables):
- *  - Largo de zancada ≈ altura_cm * 0.415 (fórmula biomecánica habitual).
- *  - Gasto calórico ≈ 0.0005 kcal por paso y por kg de peso corporal
- *    (equivale a ~300-400 kcal cada 10.000 pasos para un adulto promedio).
- * Si el usuario todavía no completó el onboarding, se usan valores
- * de referencia (170cm / 70kg) para no romper el cálculo.
- */
-function calcularKmYKcal(PDO $db, int $usuarioId, int $pasos): array
+/** Mismo shape de siempre: {pasos, meta_pasos, km_recorridos, kcal_quemadas}, mirando solo caminata+carrera (no ciclismo). */
+function resumenPasosCompat(RegistroActividadRepository $repo, int $usuarioId, string $fecha): array
 {
-    $stmt = $db->prepare('SELECT altura, peso_actual FROM perfiles_biometricos WHERE usuario_id = :uid');
-    $stmt->execute(['uid' => $usuarioId]);
-    $perfil = $stmt->fetch();
+    $resumen = $repo->resumenDia($usuarioId, $fecha);
+    $porTipo = $resumen['por_tipo'];
+    $distanciaMetros = (float) ($porTipo['caminata']['distancia_metros'] ?? 0) + (float) ($porTipo['carrera']['distancia_metros'] ?? 0);
+    $caloriasKcal = (float) ($porTipo['caminata']['calorias_kcal'] ?? 0) + (float) ($porTipo['carrera']['calorias_kcal'] ?? 0);
 
-    $alturaCm = $perfil ? (float) $perfil['altura'] : 170.0;
-    $pesoKg = $perfil ? (float) $perfil['peso_actual'] : 70.0;
-
-    $zancadaM = $alturaCm * 0.00415;
-    $km = round(($pasos * $zancadaM) / 1000, 2);
-    $kcal = (int) round($pasos * $pesoKg * 0.0005);
-
-    return ['km_recorridos' => $km, 'kcal_quemadas' => $kcal];
-}
-
-function obtenerRegistroHoy(PDO $db, int $usuarioId): array
-{
-    $stmt = $db->prepare('SELECT pasos, meta_pasos FROM registros_pasos WHERE usuario_id = :uid AND fecha = CURDATE()');
-    $stmt->execute(['uid' => $usuarioId]);
-    return $stmt->fetch() ?: ['pasos' => 0, 'meta_pasos' => 10000];
+    return [
+        'pasos' => $resumen['pasos'],
+        'meta_pasos' => $repo->obtenerMetaPasos($usuarioId),
+        'km_recorridos' => round($distanciaMetros / 1000, 2),
+        'kcal_quemadas' => (int) round($caloriasKcal),
+    ];
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $registro = obtenerRegistroHoy($db, $usuarioId);
-    respond(true, array_merge($registro, calcularKmYKcal($db, $usuarioId, (int) $registro['pasos'])));
+    respond(true, resumenPasosCompat($repo, $usuarioId, date('Y-m-d')));
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -51,26 +50,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         respond(false, null, 'Cantidad de pasos inválida.', 422);
     }
 
-    $registroAntes = obtenerRegistroHoy($db, $usuarioId);
-    $yaHabiaCumplidoMeta = (int) $registroAntes['pasos'] >= (int) $registroAntes['meta_pasos'];
+    $fecha = date('Y-m-d');
+    $metaPasos = $repo->obtenerMetaPasos($usuarioId);
+    $antes = resumenPasosCompat($repo, $usuarioId, $fecha);
+    $yaHabiaCumplidoMeta = $antes['pasos'] >= $metaPasos;
 
-    $db->prepare(
-        'INSERT INTO registros_pasos (usuario_id, fecha, pasos)
-         VALUES (:uid, CURDATE(), :cantidad)
-         ON DUPLICATE KEY UPDATE pasos = pasos + VALUES(pasos)'
-    )->execute(['uid' => $usuarioId, 'cantidad' => $cantidad]);
+    $alturaPeso = $repo->obtenerAlturaPeso($usuarioId);
+    $distanciaAdicional = CalculadoraActividad::distanciaDesdePasos($cantidad, $alturaPeso['altura']);
+    // Duración desconocida para pasos sueltos del pedómetro: se usa la
+    // fórmula liviana de siempre (kcal por paso y por kg) en vez del MET
+    // por duración, que necesitaría un tiempo que acá no existe.
+    $caloriasAdicionales = round($cantidad * $alturaPeso['peso'] * 0.0005, 1);
 
-    $registro = obtenerRegistroHoy($db, $usuarioId);
+    $repo->sumarPasosLocal($usuarioId, $fecha, (int) $tipoCaminata['id'], 'sensor_web', $cantidad, $distanciaAdicional, $caloriasAdicionales);
+
+    $registro = resumenPasosCompat($repo, $usuarioId, $fecha);
 
     $xpOtorgado = null;
-    $cumplioMetaAhora = (int) $registro['pasos'] >= (int) $registro['meta_pasos'];
+    $cumplioMetaAhora = $registro['pasos'] >= $metaPasos;
     if ($cumplioMetaAhora && !$yaHabiaCumplidoMeta) {
         $xpSystem = new SistemaXP($db);
         $xpOtorgado = $xpSystem->otorgarXP($usuarioId, SistemaXP::XP_PASOS);
     }
 
     respond(true, [
-        'registro' => array_merge($registro, calcularKmYKcal($db, $usuarioId, (int) $registro['pasos'])),
+        'registro' => $registro,
         'xp' => $xpOtorgado,
     ], 'Pasos registrados.');
 }

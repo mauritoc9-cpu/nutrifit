@@ -2,9 +2,17 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>NutriFit — Nutrición, Hidratación y Entrenamiento Gamificado</title>
-<link rel="stylesheet" href="css/styles.css?v=7" />
+<link rel="stylesheet" href="css/styles.css?v=33" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
 </head>
 <body>
 
@@ -13,7 +21,7 @@
 ==================================================================== -->
 <div id="screen-login" class="screen auth-screen">
   <div class="auth-card">
-    <div class="brand-mark"><span class="dot"></span><span>NutriFit</span></div>
+    <div class="brand-mark"><img src="assets/img/logo/nutrifit-logo-icon.png" alt="NutriFit" class="brand-logo" /><span>NutriFit</span></div>
     <h1>Bienvenido de vuelta</h1>
     <p class="subtitle">Inicia sesión para continuar tu racha.</p>
 
@@ -43,7 +51,7 @@
 ==================================================================== -->
 <div id="screen-recuperar" class="screen auth-screen hidden">
   <div class="auth-card">
-    <div class="brand-mark"><span class="dot"></span><span>NutriFit</span></div>
+    <div class="brand-mark"><img src="assets/img/logo/nutrifit-logo-icon.png" alt="NutriFit" class="brand-logo" /><span>NutriFit</span></div>
     <h1>Recuperar contraseña</h1>
     <p class="subtitle">Ingresá tu email y te mandamos un link para elegir una nueva.</p>
 
@@ -67,7 +75,7 @@
 ==================================================================== -->
 <div id="screen-nueva-password" class="screen auth-screen hidden">
   <div class="auth-card">
-    <div class="brand-mark"><span class="dot"></span><span>NutriFit</span></div>
+    <div class="brand-mark"><img src="assets/img/logo/nutrifit-logo-icon.png" alt="NutriFit" class="brand-logo" /><span>NutriFit</span></div>
     <h1>Elegí una nueva contraseña</h1>
     <p class="subtitle">Mínimo 8 caracteres.</p>
 
@@ -91,7 +99,7 @@
 ==================================================================== -->
 <div id="screen-registro" class="screen auth-screen hidden">
   <div class="auth-card">
-    <div class="brand-mark"><span class="dot"></span><span>NutriFit</span></div>
+    <div class="brand-mark"><img src="assets/img/logo/nutrifit-logo-icon.png" alt="NutriFit" class="brand-logo" /><span>NutriFit</span></div>
     <h1>Crea tu cuenta</h1>
     <p class="subtitle">Empieza tu camino hacia mejores hábitos.</p>
 
@@ -128,34 +136,31 @@
       <div class="ob-progress-bar">
         <span data-segment="biometria"></span><span data-segment="actividad"></span><span data-segment="dieta"></span><span data-segment="alergias"></span>
       </div>
-      <div class="ob-chips" id="ob-chips">
-        <span class="ob-chip" data-chip="biometria">Información básica</span>
-        <span class="ob-chip" data-chip="actividad">Nivel de actividad</span>
-        <span class="ob-chip" data-chip="dieta">Dieta</span>
-        <span class="ob-chip" data-chip="alergias">Alergias</span>
-      </div>
+      <p class="ob-paso-label" id="ob-paso-label"></p>
     </div>
 
     <!-- Paso: Objetivo principal -->
     <div class="ob-step active" id="ob-step-objetivo">
-      <h1 class="ob-title">¡Hola! 👋<br>¿Cuál es tu objetivo principal?</h1>
+      <h1 class="ob-title">¿Cuál es tu objetivo principal?</h1>
+      <p class="ob-subtitle">Elegí el que mejor te representa hoy — lo podés cambiar después desde tu perfil.</p>
       <div class="ob-options" id="ob-options-objetivo">
-        <label class="ob-radio-card"><input type="radio" name="objetivo" value="perder_grasa" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon">🔥</span><span class="ob-radio-label">Perder peso</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="objetivo" value="mantener_peso" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon">⚖️</span><span class="ob-radio-label">Mantener peso</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="objetivo" value="ganar_musculo" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon">💪</span><span class="ob-radio-label">Ganar músculo</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="objetivo" value="monitorear_salud" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon">🩺</span><span class="ob-radio-label">Monitorear dieta por condición de salud</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="objetivo" value="mejorar_habitos" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon">🚀</span><span class="ob-radio-label">Mejorar mis hábitos alimenticios</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="objetivo" value="perder_grasa" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon" data-icon="trending-down"></span><span class="ob-radio-label">Bajar de peso</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="objetivo" value="mantener_peso" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon" data-icon="scale"></span><span class="ob-radio-label">Mantener mi peso</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="objetivo" value="ganar_musculo" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon" data-icon="dumbbell"></span><span class="ob-radio-label">Ganar masa muscular</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="objetivo" value="mejorar_habitos" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon" data-icon="salad"></span><span class="ob-radio-label">Mejorar mi alimentación</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="objetivo" value="monitorear_salud" onchange="obSelect('objetivo', this.value)"><span class="ob-radio-icon" data-icon="stethoscope"></span><span class="ob-radio-label">Seguir necesidades alimentarias específicas</span><span class="ob-radio-dot"></span></label>
       </div>
-      <div class="ob-nav"><button class="btn btn-primary" id="ob-btn-objetivo" disabled onclick="obGoTo('biometria')">Continuar →</button></div>
+      <div class="ob-nav"><button class="btn btn-primary row-label" style="justify-content:center;" id="ob-btn-objetivo" disabled onclick="obGoTo('biometria')">Continuar<span data-icon="arrow-right" data-icon-size="16"></span></button></div>
     </div>
 
     <!-- Paso: Información básica -->
     <div class="ob-step" id="ob-step-biometria">
       <h2 class="ob-title" style="font-size:22px;">Contanos un poco de vos</h2>
-      <p class="ob-subtitle">Lo usamos para calcular tu plan nutricional personalizado.</p>
+      <p class="ob-subtitle">Con esto calculamos tus calorías y macros de forma personalizada.</p>
       <div class="field">
         <label>Edad</label>
-        <input type="number" id="ob-edad" min="12" max="100" required />
+        <input type="number" id="ob-edad" min="12" max="100" inputmode="numeric" required />
+        <span class="field-error" id="err-ob-edad"></span>
       </div>
       <div class="field">
         <label>Género</label>
@@ -166,47 +171,51 @@
         </select>
       </div>
       <div class="field">
-        <label>Peso actual (kg)</label>
-        <input type="number" step="0.1" id="ob-peso" required />
+        <label class="row-label"><span data-icon="scale" data-icon-size="14"></span>Peso actual (kg)</label>
+        <input type="number" step="0.1" id="ob-peso" inputmode="decimal" required />
+        <span class="field-error" id="err-ob-peso"></span>
       </div>
       <div class="field">
-        <label>Peso objetivo (kg) — opcional</label>
-        <input type="number" step="0.1" id="ob-peso-objetivo" />
+        <label class="row-label"><span data-icon="target" data-icon-size="14"></span>Peso objetivo (kg) — opcional</label>
+        <input type="number" step="0.1" id="ob-peso-objetivo" inputmode="decimal" />
+        <span class="field-error" id="err-ob-peso-objetivo"></span>
       </div>
       <div class="field">
-        <label>Altura (cm)</label>
-        <input type="number" step="0.1" id="ob-altura" required />
+        <label class="row-label"><span data-icon="ruler" data-icon-size="14"></span>Altura (cm)</label>
+        <input type="number" step="0.1" id="ob-altura" inputmode="decimal" required />
+        <span class="field-error" id="err-ob-altura"></span>
       </div>
       <div class="ob-nav">
-        <button class="btn btn-ghost" onclick="obGoTo('objetivo')">Atrás</button>
-        <button class="btn btn-primary" onclick="obSubmitBiometria()">Continuar →</button>
+        <button class="btn btn-ghost row-label" style="justify-content:center;" onclick="obGoTo('objetivo')"><span data-icon="arrow-left" data-icon-size="16"></span>Atrás</button>
+        <button class="btn btn-primary row-label" style="justify-content:center;" onclick="obSubmitBiometria()">Continuar<span data-icon="arrow-right" data-icon-size="16"></span></button>
       </div>
     </div>
 
-    <!-- Paso: Feedback motivacional -->
+    <!-- Paso: Feedback del objetivo (dinámico, ver evaluarObjetivoPeso en auth.js) -->
     <div class="ob-step" id="ob-step-feedback">
-      <div class="ob-feedback-icon">🎯</div>
+      <div class="ob-feedback-icon" id="ob-feedback-icon"></div>
       <h1 class="ob-title" id="ob-feedback-msg" style="text-align:center;"></h1>
-      <div class="ob-nav"><button class="btn btn-primary" onclick="obGoTo('actividad')">Continuar →</button></div>
+      <p class="ob-feedback-imc" id="ob-feedback-imc"></p>
+      <div class="ob-nav"><button class="btn btn-primary row-label" style="justify-content:center;" onclick="obGoTo('actividad')">Continuar<span data-icon="arrow-right" data-icon-size="16"></span></button></div>
     </div>
 
     <!-- Paso: Nivel de actividad -->
     <div class="ob-step" id="ob-step-actividad">
-      <h2 class="ob-title" style="font-size:22px;">¿Qué tan activo sos?</h2>
+      <h2 class="ob-title" style="font-size:22px;">¿Qué tan activo sos en tu día a día?</h2>
       <div class="ob-options" id="ob-options-actividad">
-        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="sedentario" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon">🛋️</span><span class="ob-radio-label">Sedentario</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="ligero" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon">🚶</span><span class="ob-radio-label">Ligero</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="moderado" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon">🏃</span><span class="ob-radio-label">Moderado</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="muy_activo" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon">🔥</span><span class="ob-radio-label">Muy activo</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="sedentario" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon" data-icon="sofa"></span><span class="ob-radio-label">Sedentario</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="ligero" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon" data-icon="footprints"></span><span class="ob-radio-label">Ligero</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="moderado" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon" data-icon="activity"></span><span class="ob-radio-label">Moderado</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="nivel_actividad" value="muy_activo" onchange="obSelect('nivel_actividad', this.value)"><span class="ob-radio-icon" data-icon="zap"></span><span class="ob-radio-label">Muy activo</span><span class="ob-radio-dot"></span></label>
       </div>
       <p class="ob-subtitle" style="margin:18px 0 10px;">¿Dónde entrenás normalmente?</p>
       <div class="ob-options" id="ob-options-lugar">
-        <label class="ob-radio-card"><input type="radio" name="lugar_entreno" value="casa" onchange="obSelect('lugar_entreno', this.value)"><span class="ob-radio-icon">🏠</span><span class="ob-radio-label">Casa (sin equipo)</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="lugar_entreno" value="gimnasio" onchange="obSelect('lugar_entreno', this.value)"><span class="ob-radio-icon">🏋️</span><span class="ob-radio-label">Gimnasio</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="lugar_entreno" value="casa" onchange="obSelect('lugar_entreno', this.value)"><span class="ob-radio-icon" data-icon="home"></span><span class="ob-radio-label">Casa (sin equipo)</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="lugar_entreno" value="gimnasio" onchange="obSelect('lugar_entreno', this.value)"><span class="ob-radio-icon" data-icon="dumbbell"></span><span class="ob-radio-label">Gimnasio</span><span class="ob-radio-dot"></span></label>
       </div>
       <div class="ob-nav">
-        <button class="btn btn-ghost" onclick="obGoTo('feedback')">Atrás</button>
-        <button class="btn btn-primary" id="ob-btn-actividad" disabled onclick="obGoTo('dieta')">Continuar →</button>
+        <button class="btn btn-ghost row-label" style="justify-content:center;" onclick="obGoTo('feedback')"><span data-icon="arrow-left" data-icon-size="16"></span>Atrás</button>
+        <button class="btn btn-primary row-label" style="justify-content:center;" id="ob-btn-actividad" disabled onclick="obGoTo('dieta')">Continuar<span data-icon="arrow-right" data-icon-size="16"></span></button>
       </div>
     </div>
 
@@ -214,51 +223,60 @@
     <div class="ob-step" id="ob-step-dieta">
       <h2 class="ob-title" style="font-size:22px;">¿Cómo es tu alimentación?</h2>
       <div class="ob-options" id="ob-options-dieta">
-        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="omnivora" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🍽️</span><span class="ob-radio-label">Normal / Omnívora</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="vegetariana" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🥦</span><span class="ob-radio-label">Vegetariana</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="vegana" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🌱</span><span class="ob-radio-label">Vegana</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="pescatariana" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🐟</span><span class="ob-radio-label">Pescatariana</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="keto" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🥑</span><span class="ob-radio-label">Keto</span><span class="ob-radio-dot"></span></label>
-        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="sin_gluten" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon">🌾</span><span class="ob-radio-label">Sin Gluten</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="omnivora" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon" data-icon="utensils"></span><span class="ob-radio-label">Omnívora</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="vegetariana" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon" data-icon="leaf"></span><span class="ob-radio-label">Vegetariana</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="vegana" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon" data-icon="vegan"></span><span class="ob-radio-label">Vegana</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="pescatariana" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon" data-icon="fish"></span><span class="ob-radio-label">Pescatariana</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="keto" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon" data-icon="flame"></span><span class="ob-radio-label">Keto</span><span class="ob-radio-dot"></span></label>
+        <label class="ob-radio-card"><input type="radio" name="tipo_dieta" value="sin_gluten" onchange="obSelect('tipo_dieta', this.value)"><span class="ob-radio-icon" data-icon="wheat-off"></span><span class="ob-radio-label">Sin Gluten</span><span class="ob-radio-dot"></span></label>
       </div>
       <div class="ob-nav">
-        <button class="btn btn-ghost" onclick="obGoTo('actividad')">Atrás</button>
-        <button class="btn btn-primary" id="ob-btn-dieta" disabled onclick="obGoTo('alergias')">Continuar →</button>
+        <button class="btn btn-ghost row-label" style="justify-content:center;" onclick="obGoTo('actividad')"><span data-icon="arrow-left" data-icon-size="16"></span>Atrás</button>
+        <button class="btn btn-primary row-label" style="justify-content:center;" id="ob-btn-dieta" disabled onclick="obGoTo('alergias')">Continuar<span data-icon="arrow-right" data-icon-size="16"></span></button>
       </div>
     </div>
 
-    <!-- Paso: Alergias e intolerancias -->
+    <!-- Paso: Restricciones y condiciones -->
     <div class="ob-step" id="ob-step-alergias">
-      <h2 class="ob-title" style="font-size:22px;">¿Alguna alergia o condición médica?</h2>
-      <p class="ob-subtitle">Elegí todas las que apliquen.</p>
-      <div class="ob-options ob-options-multi" id="ob-options-alergias">
-        <label class="ob-check-chip"><input type="checkbox" value="celiaco" onchange="obToggleAlergia(this)"><span>🌾 Celíaco / Sin TACC</span></label>
-        <label class="ob-check-chip"><input type="checkbox" value="lactosa" onchange="obToggleAlergia(this)"><span>🥛 Intolerancia a la Lactosa</span></label>
-        <label class="ob-check-chip"><input type="checkbox" value="frutos_secos" onchange="obToggleAlergia(this)"><span>🥜 Frutos Secos</span></label>
-        <label class="ob-check-chip"><input type="checkbox" value="mariscos" onchange="obToggleAlergia(this)"><span>🦐 Mariscos</span></label>
-        <label class="ob-check-chip"><input type="checkbox" value="huevo" onchange="obToggleAlergia(this)"><span>🥚 Huevo</span></label>
-        <label class="ob-check-chip"><input type="checkbox" value="diabetes" onchange="obToggleAlergia(this)"><span>💉 Diabetes</span></label>
-        <label class="ob-check-chip"><input type="checkbox" value="hipertension" onchange="obToggleAlergia(this)"><span>❤️ Hipertensión</span></label>
-        <label class="ob-check-chip"><input type="checkbox" value="ninguna" onchange="obToggleAlergia(this)"><span>✅ Ninguna</span></label>
+      <h2 class="ob-title" style="font-size:22px;">¿Alguna restricción alimentaria?</h2>
+      <p class="ob-subtitle">Elegí todas las que apliquen — las usamos para filtrar alimentos y recetas.</p>
+
+      <p class="ob-group-label">Restricciones alimentarias</p>
+      <div class="ob-options ob-options-multi" id="ob-options-restricciones">
+        <label class="ob-check-chip"><input type="checkbox" class="ob-alergia-input" value="celiaco" onchange="obToggleAlergia(this)"><span class="row-label"><span data-icon="wheat-off" data-icon-size="15"></span>Celíaco / Sin TACC</span></label>
+        <label class="ob-check-chip"><input type="checkbox" class="ob-alergia-input" value="lactosa" onchange="obToggleAlergia(this)"><span class="row-label"><span data-icon="milk-off" data-icon-size="15"></span>Intolerancia a la lactosa</span></label>
+        <label class="ob-check-chip"><input type="checkbox" class="ob-alergia-input" value="frutos_secos" onchange="obToggleAlergia(this)"><span class="row-label"><span data-icon="nut" data-icon-size="15"></span>Frutos secos</span></label>
+        <label class="ob-check-chip"><input type="checkbox" class="ob-alergia-input" value="mariscos" onchange="obToggleAlergia(this)"><span class="row-label"><span data-icon="shrimp" data-icon-size="15"></span>Mariscos</span></label>
+        <label class="ob-check-chip"><input type="checkbox" class="ob-alergia-input" value="huevo" onchange="obToggleAlergia(this)"><span class="row-label"><span data-icon="egg" data-icon-size="15"></span>Huevo</span></label>
       </div>
+
+      <p class="ob-group-label">Condiciones a tener en cuenta</p>
+      <div class="ob-options ob-options-multi" id="ob-options-condiciones">
+        <label class="ob-check-chip"><input type="checkbox" class="ob-alergia-input" value="diabetes" onchange="obToggleAlergia(this)"><span class="row-label"><span data-icon="droplets" data-icon-size="15"></span>Diabetes</span></label>
+        <label class="ob-check-chip"><input type="checkbox" class="ob-alergia-input" value="hipertension" onchange="obToggleAlergia(this)"><span class="row-label"><span data-icon="heart-pulse" data-icon-size="15"></span>Hipertensión</span></label>
+      </div>
+      <p class="ob-disclaimer row-label"><span data-icon="shield-check" data-icon-size="14"></span>NutriFit puede adaptar sugerencias generales, pero no reemplaza indicaciones profesionales.</p>
+
+      <label class="ob-check-chip ob-check-chip--ninguna"><input type="checkbox" class="ob-alergia-input" value="ninguna" onchange="obToggleAlergia(this)"><span class="row-label"><span data-icon="circle-check" data-icon-size="15"></span>Ninguna de las anteriores</span></label>
+
       <div class="ob-nav">
-        <button class="btn btn-ghost" onclick="obGoTo('dieta')">Atrás</button>
-        <button class="btn btn-primary" onclick="obSubmitFinal()">Generar mi plan →</button>
+        <button class="btn btn-ghost row-label" style="justify-content:center;" onclick="obGoTo('dieta')"><span data-icon="arrow-left" data-icon-size="16"></span>Atrás</button>
+        <button class="btn btn-primary row-label" style="justify-content:center;" onclick="obSubmitFinal()">Generar mi plan<span data-icon="arrow-right" data-icon-size="16"></span></button>
       </div>
     </div>
 
     <!-- Paso: Resumen final -->
     <div class="ob-step" id="ob-step-resumen">
-      <h1 class="ob-title" id="ob-resumen-titulo" style="text-align:center;">¡Felicidades!</h1>
-      <p class="ob-subtitle" style="text-align:center;">Tu plan está listo. Aquí están tus metas nutricionales diarias.</p>
+      <h1 class="ob-title" id="ob-resumen-titulo" style="text-align:center;">¡Listo!</h1>
+      <p class="ob-subtitle" style="text-align:center;">Tu plan está listo. Estas son tus metas nutricionales diarias.</p>
 
       <div class="ring-main" id="ring-calorias"></div>
 
       <div class="rings-grid" id="rings-macros"></div>
 
-      <div class="ob-trophy" id="ob-trophy">🏆</div>
+      <div class="ob-trophy" id="ob-trophy" data-icon="target" data-icon-size="48"></div>
 
-      <div class="ob-nav"><button class="btn btn-primary" onclick="obFinish()">Empecemos →</button></div>
+      <div class="ob-nav"><button class="btn btn-primary row-label" style="justify-content:center;" onclick="obFinish()">Empecemos<span data-icon="arrow-right" data-icon-size="16"></span></button></div>
     </div>
 
   </div>
@@ -268,24 +286,34 @@
      APP PRINCIPAL (post-login) — Sidebar (PC) + Bottom Nav (Móvil)
 ==================================================================== -->
 <div id="screen-app" class="screen hidden">
+  <button class="mobile-theme-toggle" id="mobile-theme-btn" onclick="toggleTheme()" aria-label="Cambiar tema claro/oscuro"><span class="icon" data-icon="moon"></span></button>
   <div class="app-shell">
 
     <!-- Sidebar Desktop -->
     <aside class="sidebar">
-      <div class="brand-mark"><span class="dot"></span><span>NutriFit</span></div>
+      <div class="brand-mark"><img src="assets/img/logo/nutrifit-logo-icon.png" alt="NutriFit" class="brand-logo" /><span>NutriFit</span></div>
 
       <ul class="nav-list">
         <li class="nav-item active" data-view="progreso" onclick="loadView('progreso')">
-          <span class="icon">🧑‍🚀</span> Mi Progreso
+          <span class="icon" data-icon="home"></span> Inicio
+        </li>
+        <li class="nav-item" data-view="actividad" onclick="loadView('actividad')">
+          <span class="icon" data-icon="footprints"></span> Actividad
         </li>
         <li class="nav-item" data-view="nutricion" onclick="loadView('nutricion')">
-          <span class="icon">🥗</span> Nutrición
+          <span class="icon" data-icon="utensils"></span> Nutrición
         </li>
         <li class="nav-item" data-view="escaner" onclick="loadView('escaner')">
-          <span class="icon">📷</span> Escáner IA
+          <span class="icon" data-icon="scan"></span> Escáner IA
+        </li>
+        <li class="nav-item" data-view="mi_progreso" onclick="loadView('mi_progreso')">
+          <span class="icon" data-icon="activity"></span> Mi Progreso
         </li>
         <li class="nav-item" data-view="ranking" onclick="loadView('ranking')">
-          <span class="icon">🏆</span> Ranking & Tienda
+          <span class="icon" data-icon="trophy"></span> Ranking &amp; Tienda
+        </li>
+        <li class="nav-item" data-view="mi_perfil" onclick="loadView('mi_perfil')">
+          <span class="icon" data-icon="user"></span> Mi Perfil
         </li>
       </ul>
 
@@ -295,16 +323,18 @@
           <div class="theme-toggle-switch" onclick="toggleTheme()"></div>
         </div>
         <button class="nav-item" style="width:100%;" onclick="abrirModalEditarPerfil()">
-          <span class="icon">⚙️</span> Editar perfil
+          <span class="icon" data-icon="settings"></span> Configuración
         </button>
         <button class="nav-item" id="btn-recordatorios" style="width:100%;" onclick="toggleRecordatorios()">
-          <span class="icon">🔕</span> Activar recordatorios
+          <span class="icon" data-icon="bell-off"></span> Activar recordatorios
         </button>
         <div class="user-chip">
-          <div class="avatar-mini">NF</div>
-          <div class="info">
-            <div class="name">Usuario</div>
-            <div class="level">Nivel 1</div>
+          <div class="user-chip-clickable" onclick="loadView('mi_perfil')" role="button" tabindex="0">
+            <div class="avatar-mini">NF</div>
+            <div class="info">
+              <div class="name">Usuario</div>
+              <div class="level">Nivel 1</div>
+            </div>
           </div>
           <button class="logout-btn" onclick="handleLogout()">Salir</button>
         </div>
@@ -314,33 +344,47 @@
     <!-- Contenido principal -->
     <main class="main-content">
       <div id="view-progreso" class="view active"></div>
+      <div id="view-actividad" class="view"></div>
+      <div id="view-mi_progreso" class="view"></div>
       <div id="view-nutricion" class="view"></div>
       <div id="view-escaner" class="view"></div>
       <div id="view-ranking" class="view"></div>
+      <div id="view-mi_perfil" class="view"></div>
     </main>
   </div>
 
   <!-- Bottom Nav Móvil -->
   <nav class="bottom-nav">
     <div class="nav-item active" data-view="progreso" onclick="loadView('progreso')">
-      <span class="icon">🧑‍🚀</span> Progreso
+      <span class="icon" data-icon="home"></span> Inicio
+    </div>
+    <div class="nav-item" data-view="actividad" onclick="loadView('actividad')">
+      <span class="icon" data-icon="footprints"></span> Actividad
     </div>
     <div class="nav-item" data-view="nutricion" onclick="loadView('nutricion')">
-      <span class="icon">🥗</span> Nutrición
+      <span class="icon" data-icon="utensils"></span> Nutrición
     </div>
     <div class="nav-item" data-view="escaner" onclick="loadView('escaner')">
-      <span class="icon">📷</span> Escáner
+      <span class="icon" data-icon="scan"></span> Escáner
+    </div>
+    <div class="nav-item" data-view="mi_progreso" onclick="loadView('mi_progreso')">
+      <span class="icon" data-icon="activity"></span> Progreso
     </div>
     <div class="nav-item" data-view="ranking" onclick="loadView('ranking')">
-      <span class="icon">🏆</span> Ranking
+      <span class="icon" data-icon="trophy"></span> Ranking
+    </div>
+    <div class="nav-item" data-view="mi_perfil" onclick="loadView('mi_perfil')">
+      <span class="icon" data-icon="user"></span> Perfil
     </div>
   </nav>
 </div>
 
 <div id="toast" class="toast"></div>
 
-<script src="js/api.js?v=7"></script>
-<script src="js/auth.js?v=7"></script>
-<script src="js/app.js?v=7"></script>
+<script type="module" src="js/robot-avatar.js?v=13"></script>
+<script src="js/icons.js?v=5"></script>
+<script src="js/api.js?v=11"></script>
+<script src="js/auth.js?v=10"></script>
+<script src="js/app.js?v=32"></script>
 </body>
 </html>

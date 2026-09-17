@@ -15,6 +15,7 @@ class SistemaXP
     public const XP_HIDRATACION   = 5;   // al completar 3 vasos
     public const XP_ENTRENAMIENTO = 25;
     public const XP_PASOS         = 15;  // al alcanzar la meta diaria de pasos
+    public const XP_ACTIVIDAD_SESION = 20; // al completar una sesión válida de actividad física (ver CriteriosActividadXP)
     public const BONO_RACHA_PORCENTAJE = 0.10; // +10% por día consecutivo
 
     public function __construct(PDO $db)

@@ -1,0 +1,39 @@
+<svg viewBox="0 0 400 700" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Cuerpo base del avatar NutriFit — capa "cuerpo" (torso, brazos, manos,
+    piernas y pies; NO incluye cabeza, que es una pieza independiente).
+    viewBox="0 0 400 700": todas las piezas (cabeza, pelo, remera, pantalón,
+    zapatillas, accesorios) comparten exactamente este mismo viewBox y
+    sistema de coordenadas para superponerse sin ajustes manuales.
+  -->
+  <ellipse cx="200" cy="640" rx="70" ry="12" fill="rgba(15,23,42,0.12)" />
+
+  <!-- piernas -->
+  <path d="M168,420 L150,600 Q149,614 163,616 L182,616 Q192,614 191,600 L196,420 Z" fill="#F2B48C" />
+  <path d="M232,420 L250,600 Q251,614 237,616 L218,616 Q208,614 209,600 L204,420 Z" fill="#F2B48C" />
+
+  <!-- pies -->
+  <path d="M148,608 Q142,616 150,624 L192,624 Q198,616 190,610 Z" fill="#F2B48C" stroke="rgba(0,0,0,0.08)" stroke-width="1.5" />
+  <path d="M252,608 Q258,616 250,624 L208,624 Q202,616 210,610 Z" fill="#F2B48C" stroke="rgba(0,0,0,0.08)" stroke-width="1.5" />
+
+  <!-- brazo izquierdo -->
+  <path d="M118,232 Q100,240 96,270 L92,390 Q91,404 104,406 Q116,404 117,390 L124,278 Q128,250 140,236 Z" fill="#F2B48C" />
+  <circle cx="99" cy="404" r="17" fill="#F2B48C" />
+
+  <!-- brazo derecho -->
+  <path d="M282,232 Q300,240 304,270 L308,390 Q309,404 296,406 Q284,404 283,390 L276,278 Q272,250 260,236 Z" fill="#F2B48C" />
+  <circle cx="301" cy="404" r="17" fill="#F2B48C" />
+
+  <!-- torso -->
+  <path d="M144,228
+           Q144,218 156,216
+           L244,216
+           Q256,218 256,228
+           L251,395
+           Q249,414 230,416
+           L170,416
+           Q151,414 149,395
+           Z" fill="#F6C39C" />
+  <!-- sombra sutil lateral del torso -->
+  <path d="M144,228 Q144,218 156,216 L170,216 L164,410 Q163,414 160,415 Q152,412 149,395 Z" fill="#E7A876" opacity="0.55" />
+</svg>

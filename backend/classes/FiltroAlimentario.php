@@ -109,10 +109,26 @@ class FiltroAlimentario
             return ['tipo_dieta' => 'omnivora', 'alergias' => []];
         }
 
-        $alergias = json_decode($perfil['alergias'] ?? '[]', true);
+        return [
+            'tipo_dieta' => $perfil['tipo_dieta'],
+            'alergias' => self::normalizarRestricciones($perfil['alergias']),
+        ];
+    }
+
+    /**
+     * Pasa el JSON crudo de la columna `alergias` a una lista limpia: saca
+     * el centinela 'ninguna' y reindexa. Es pública para que
+     * ContextoUsuarioRepository normalice exactamente igual sin tener que
+     * repetir la regla (ni hacer una segunda consulta a la misma tabla).
+     *
+     * @return string[]
+     */
+    public static function normalizarRestricciones(?string $alergiasJson): array
+    {
+        $alergias = json_decode($alergiasJson ?? '[]', true);
         $alergias = is_array($alergias) ? array_diff($alergias, ['ninguna']) : [];
 
-        return ['tipo_dieta' => $perfil['tipo_dieta'], 'alergias' => array_values($alergias)];
+        return array_values($alergias);
     }
 
     private static function contieneAlguna(string $texto, array $palabras): bool

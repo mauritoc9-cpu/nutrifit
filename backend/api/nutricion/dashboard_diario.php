@@ -2,6 +2,18 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../config/bootstrap.php';
+require_once __DIR__ . '/../../classes/personalizacion/ContextoUsuarioRepository.php';
+require_once __DIR__ . '/../../classes/personalizacion/BalanceNutricionalDiario.php';
+require_once __DIR__ . '/../../classes/personalizacion/RecomendadorNutricional.php';
+
+/**
+ * Resumen nutricional del día.
+ *
+ * Desde el paso 1 del Motor de Personalización, este endpoint ya no
+ * contiene reglas: arma el contexto del usuario, calcula el balance del
+ * día y delega la decisión en RecomendadorNutricional. Si hay que
+ * cambiar una regla, se cambia allá — acá no quedó ninguna copia.
+ */
 
 $usuarioId = requireAuth();
 $fecha = $_GET['fecha'] ?? date('Y-m-d');
@@ -10,34 +22,17 @@ if (!DateTime::createFromFormat('Y-m-d', $fecha)) {
     respond(false, null, 'Formato de fecha inválido. Usa YYYY-MM-DD.', 422);
 }
 
-require_once __DIR__ . '/../../classes/FiltroAlimentario.php';
-
 $db = (new Database())->getConnection();
 
-// Metas del usuario (definidas en el onboarding).
-$stmtMeta = $db->prepare(
-    'SELECT meta_calorias, meta_proteinas, meta_carbohidratos, meta_grasas
-     FROM perfiles_biometricos WHERE usuario_id = :uid'
-);
-$stmtMeta->execute(['uid' => $usuarioId]);
-$metas = $stmtMeta->fetch() ?: [
-    'meta_calorias' => 2000, 'meta_proteinas' => 120, 'meta_carbohidratos' => 220, 'meta_grasas' => 60,
-];
-
-// Sugerencias de proteína acordes al tipo de dieta (evita recomendar
-// pollo/pescado/huevo a usuarios vegetarianos/veganos, etc.).
-$tipoDieta = FiltroAlimentario::obtenerPerfilAlimentario($db, $usuarioId)['tipo_dieta'];
-$sugerenciaProteina = match ($tipoDieta) {
-    'vegana'       => 'lentejas, garbanzos, tofu o tempeh',
-    'vegetariana'  => 'huevo, lentejas, garbanzos o queso',
-    'pescatariana' => 'pescado, salmón o huevo',
-    default        => 'pollo, pescado o huevo',
-};
+// Perfil + metas + restricciones, en una sola lectura y con los defaults
+// centralizados (ver PerfilDefaults) en vez de repetidos acá.
+$contexto = (new ContextoUsuarioRepository($db))->obtener($usuarioId);
 
 // Comidas del día, agrupadas por tipo.
 $stmtComidas = $db->prepare(
     "SELECT rc.id, rc.tipo_comida, rc.gramos, rc.calorias_totales, rc.proteinas_totales,
-            rc.carbohidratos_totales, rc.grasas_totales, rc.hora_registro, a.nombre AS alimento
+            rc.carbohidratos_totales, rc.grasas_totales, rc.hora_registro,
+            COALESCE(a.nombre_mostrado, a.nombre) AS alimento
      FROM registros_comidas rc
      JOIN alimentos a ON a.id = rc.alimento_id
      WHERE rc.usuario_id = :uid AND rc.fecha = :fecha
@@ -59,40 +54,24 @@ foreach ($comidas as $c) {
     $porTipo[$c['tipo_comida']][] = $c;
 }
 
-// --- Recomendación inteligente de próxima comida ---
-$restanteProteina = max(0, (int) $metas['meta_proteinas'] - $totales['proteinas']);
-$restanteCarbo = max(0, (int) $metas['meta_carbohidratos'] - $totales['carbohidratos']);
-$restanteGrasa = max(0, (int) $metas['meta_grasas'] - $totales['grasas']);
-
-if ($totales['carbohidratos'] > ((int) $metas['meta_carbohidratos'] * 0.6) && $restanteProteina > 20) {
-    $recomendacion = "Ya llevas un buen nivel de carbohidratos hoy. Para tu próxima comida te recomendamos "
-        . "priorizar proteína magra ({$sugerenciaProteina}) con vegetales de bajo índice calórico.";
-} elseif ($restanteProteina > 40) {
-    $recomendacion = "Aún te faltan aproximadamente {$restanteProteina}g de proteína para hoy. Considera "
-        . "incluir una porción generosa de {$sugerenciaProteina} en tu próxima comida.";
-} elseif ($totales['calorias'] >= (int) $metas['meta_calorias']) {
-    $recomendacion = "Ya alcanzaste tu meta calórica del día. Si vas a comer algo más, opta por algo ligero "
-        . "como una ensalada verde o yogur natural.";
-} else {
-    $recomendacion = "Vas bien encaminado. Mantén un balance entre proteína y vegetales en tu próxima comida "
-        . "para cumplir tus macros del día.";
-}
+$balance = BalanceNutricionalDiario::calcular($contexto, $totales);
+$recomendacion = (new RecomendadorNutricional())->evaluar($contexto, $balance);
 
 respond(true, [
     'fecha'  => $fecha,
-    'metas'  => $metas,
+    'metas'  => $contexto->metasComoArray(),
     'totales_consumidos' => [
         'calorias'      => round($totales['calorias'], 1),
         'proteinas'     => round($totales['proteinas'], 1),
         'carbohidratos' => round($totales['carbohidratos'], 1),
         'grasas'        => round($totales['grasas'], 1),
     ],
-    'restante' => [
-        'calorias'      => max(0, (int) $metas['meta_calorias'] - (int) $totales['calorias']),
-        'proteinas'     => $restanteProteina,
-        'carbohidratos' => $restanteCarbo,
-        'grasas'        => $restanteGrasa,
-    ],
+    'restante' => $balance->comoArrayRestante(),
     'comidas_por_tipo' => $porTipo,
-    'recomendacion_ia' => $recomendacion,
+    // ALIAS LEGACY: se llama `recomendacion_ia` por compatibilidad con el
+    // frontend actual, pero la recomendación es 100% determinista (reglas
+    // sobre los datos del propio usuario, ver RecomendadorNutricional).
+    // No hay IA involucrada. Renombrarlo requiere tocar el frontend, así
+    // que queda pendiente para una etapa posterior.
+    'recomendacion_ia' => $recomendacion->mensaje,
 ]);

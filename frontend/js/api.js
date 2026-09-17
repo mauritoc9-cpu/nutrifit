@@ -64,10 +64,12 @@ const Api = {
   eliminarComida: (registroId) =>
     apiRequest('/nutricion/registrar_comida.php', { method: 'DELETE', body: { registro_id: registroId } }),
 
-  analizarFoto: () => apiRequest('/nutricion/analizar_foto.php', { method: 'POST' }),
+  analizarFoto: (imagenBase64) =>
+    apiRequest('/nutricion/analizar_foto.php', { method: 'POST', body: { imagen_base64: imagenBase64 } }),
 
   hidratacionGet: () => apiRequest('/nutricion/hidratacion.php'),
   hidratacionSumar: () => apiRequest('/nutricion/hidratacion.php', { method: 'POST' }),
+  hidratacionQuitar: () => apiRequest('/nutricion/hidratacion.php', { method: 'DELETE' }),
 
   listaCompras: () => apiRequest('/nutricion/lista_compras.php'),
 
@@ -83,6 +85,33 @@ const Api = {
   pasosSumar: (cantidad) =>
     apiRequest('/entrenamiento/pasos.php', { method: 'POST', body: { cantidad } }),
 
+  // Módulo general de Actividad Física (caminata/carrera/ciclismo, y lo
+  // que se sume después) — pasosGet/pasosSumar de arriba siguen iguales,
+  // por compatibilidad, pero ya corren sobre este mismo motor por dentro.
+  actividadTipos: () => apiRequest('/actividad/tipos.php'),
+  actividadRegistrar: (payload) =>
+    apiRequest('/actividad/registrar.php', { method: 'POST', body: payload }),
+  actividadResumenDia: (fecha) =>
+    apiRequest(`/actividad/resumen_dia.php${fecha ? `?fecha=${encodeURIComponent(fecha)}` : ''}`),
+  actividadHistorial: (limite) =>
+    apiRequest(`/actividad/historial.php${limite ? `?limite=${encodeURIComponent(limite)}` : ''}`),
+
+  // Mi Progreso: resumen agregado (semanal por default) — misma capa de
+  // datos que ya usan Home/Nutrición/Actividad, solo agregada por rango.
+  resumenSemanal: (dias) =>
+    apiRequest(`/progreso/resumen_semanal.php${dias ? `?dias=${encodeURIComponent(dias)}` : ''}`),
+  resumenRango: (desde, hasta) =>
+    apiRequest(`/progreso/resumen_semanal.php?desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`),
+
+  // Motor de Personalización (backend = fuente de verdad de las reglas).
+  planPersonalizacion: (dias) =>
+    apiRequest(`/personalizacion/plan.php${dias ? `?dias=${encodeURIComponent(dias)}` : ''}`),
+  ejercicioDetalle: (id) =>
+    apiRequest(`/entrenamiento/ejercicio.php?id=${encodeURIComponent(id)}`),
+  recomendacionesAlimentos: () => apiRequest('/nutricion/recomendaciones.php'),
+  receta: (momento, regenerar) =>
+    apiRequest(`/nutricion/receta.php?momento=${encodeURIComponent(momento || '')}${regenerar ? '&regenerar=1' : ''}`),
+
   ranking: () => apiRequest('/gamificacion/ranking.php'),
   amigosGet: () => apiRequest('/gamificacion/amigos.php'),
   amigosAgregar: (email) =>
@@ -97,4 +126,13 @@ const Api = {
     apiRequest('/gamificacion/tienda.php', { method: 'POST', body: { accion: 'canjear', item_id: itemId } }),
   tiendaEquipar: (itemId) =>
     apiRequest('/gamificacion/tienda.php', { method: 'POST', body: { accion: 'equipar', item_id: itemId } }),
+
+  // Comidas favoritas
+  favoritosGet: () => apiRequest('/nutricion/favoritos.php'),
+  favoritosCrear: (payload) =>
+    apiRequest('/nutricion/favoritos.php', { method: 'POST', body: payload }),
+  favoritosActualizar: (favoritoId, payload) =>
+    apiRequest(`/nutricion/favoritos.php?id=${encodeURIComponent(favoritoId)}`, { method: 'PUT', body: payload }),
+  favoritosEliminar: (favoritoId) =>
+    apiRequest(`/nutricion/favoritos.php?id=${encodeURIComponent(favoritoId)}`, { method: 'DELETE' }),
 };

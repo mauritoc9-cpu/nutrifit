@@ -28,6 +28,7 @@ session_set_cookie_params([
 session_start();
 
 require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/env.php';
 
 /** Envía una respuesta JSON estandarizada y termina la ejecución. */
 function respond(bool $success, mixed $data = null, string $message = '', int $httpCode = 200): void

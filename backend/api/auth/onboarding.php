@@ -43,13 +43,20 @@ if ($alergias === []) {
     $alergias = ['ninguna'];
 }
 
+// Validación técnica de rangos plausibles (punto P: nada de NaN/Infinity/
+// negativos/valores absurdos) — esto NO evalúa si el objetivo es sano,
+// sólo que los datos sean humanamente posibles. El guardrail de IMC vive
+// en el frontend (evaluarObjetivoPeso en auth.js) y es sólo informativo,
+// no bloquea el guardado.
 if (!in_array($genero, $generosValidos, true)
     || !in_array($objetivo, $objetivosValidos, true)
     || !in_array($nivelActividad, $actividadesValidas, true)
     || !in_array($lugarEntreno, $lugaresValidos, true)
     || !in_array($tipoDieta, $dietasValidas, true)
     || $edad < 12 || $edad > 100
-    || $pesoActual <= 0 || $altura <= 0
+    || !is_finite($pesoActual) || $pesoActual <= 0 || $pesoActual > 400
+    || !is_finite($altura) || $altura <= 0 || $altura > 250
+    || ($pesoObjetivo !== null && (!is_finite($pesoObjetivo) || $pesoObjetivo <= 0 || $pesoObjetivo > 400))
 ) {
     respond(false, null, 'Alguno de los valores enviados no es válido.', 422);
 }

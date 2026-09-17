@@ -35,6 +35,12 @@ if ($usuarioModel->emailExiste($email)) {
 try {
     $id = $usuarioModel->registrar($nombre, $email, $password);
 
+    // Otorga y equipa la remera oficial de NutriFit (ítem gratuito inicial).
+    $db->prepare(
+        "INSERT IGNORE INTO inventario_usuario (usuario_id, item_id, equipado)
+         SELECT :uid, id, 1 FROM tienda_items WHERE nombre = 'Remera NutriFit' LIMIT 1"
+    )->execute(['uid' => $id]);
+
     $_SESSION['usuario_id'] = $id;
     $_SESSION['usuario_nombre'] = $nombre;
 
