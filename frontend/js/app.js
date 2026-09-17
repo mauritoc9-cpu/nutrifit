@@ -2021,7 +2021,8 @@ function etiquetaNivel(nivel) {
 
 function renderRutinaHTML(rutinaData) {
   if (!rutinaData.success) {
-    return `<p class="empty-state">Completa el onboarding para recibir una rutina personalizada.</p>`;
+    const mensaje = rutinaData.message || 'Completa el onboarding para recibir una rutina personalizada.';
+    return `<p class="empty-state">${mensaje}</p>`;
   }
   const r = rutinaData.data;
   const total = r.ejercicios.length;
@@ -2380,28 +2381,42 @@ function renderRecomendacionesSeccion(recomendaciones) {
   const titulo = esDeMi ? 'Recomendado para vos' : 'Opciones populares';
 
   const itemsHTML = itemsAMostrar.map(item => {
-    const kcal = Math.round(item.calorias || 0);
-    const proteina = Math.round((item.proteinas || 0) * 10) / 10;
-    const motivo = item.motivo_recomendacion ? `<div style="font-size:12px; color:var(--text-secondary); margin-top:6px;">${item.motivo_recomendacion}</div>` : '';
-    const porcion = item.gramos_base || item.gramos_sugeridos || 100;
-    const unidad = item.unidad || 'g';
+    const alimentoId = item.alimento?.id || 0;
+    const nombre = item.alimento?.nombre || 'Alimento';
+    const nombreEscapado = nombre.replace(/'/g, "\\'");
+    const gramos = item.porcion?.gramos || 100;
+    const etiqueta = item.porcion?.etiqueta || `${gramos} g`;
+    const kcal = Math.round(item.nutricion?.calorias || 0);
+    const proteina = Math.round((item.nutricion?.proteinas || 0) * 10) / 10;
+    const carbohidratos = item.nutricion?.carbohidratos || 0;
+    const grasas = item.nutricion?.grasas || 0;
+    const motivo = item.motivo?.texto ? `<div style="font-size:12px; color:var(--text-secondary); margin-top:6px;">${item.motivo.texto}</div>` : '';
+
+    // abrirModalRegistroComida recalcula proporcionalmente asumiendo que
+    // las macros recibidas son "por 100g" — normalizamos según la porción
+    // real que devolvió el backend (no siempre es exactamente 100g).
+    const factor100 = gramos > 0 ? 100 / gramos : 1;
+    const cal100 = (item.nutricion?.calorias || 0) * factor100;
+    const prot100 = (item.nutricion?.proteinas || 0) * factor100;
+    const carb100 = carbohidratos * factor100;
+    const gras100 = grasas * factor100;
 
     return `
       <div class="recommendation-item" style="background:var(--bg-secondary); border-radius:8px; padding:12px; margin-bottom:8px;">
         <div style="display:flex; justify-content:space-between; align-items:start; gap:8px;">
           <div style="flex:1;">
-            <div style="font-weight:600; font-size:14px;">${item.nombre}</div>
-            <div style="font-size:12px; color:var(--text-secondary);">${porcion} ${unidad}</div>
+            <div style="font-weight:600; font-size:14px;">${nombre}</div>
+            <div style="font-size:12px; color:var(--text-secondary);">${etiqueta}</div>
             <div style="font-size:13px; margin-top:4px;"><strong>${kcal}</strong> kcal · <strong>${proteina}g</strong> proteína</div>
             ${motivo}
           </div>
           <div style="display:flex; gap:6px; flex-direction:column;">
             <button type="button" class="btn btn-primary" style="padding:6px 10px; font-size:12px; white-space:nowrap;"
-              onclick="agregarDesdeRecomendacion(${item.id || 0}, '${item.nombre.replace(/'/g, "\\'")}', ${item.calorias || 0}, ${item.proteinas || 0}, ${item.carbohidratos || 0}, ${item.grasas || 0}, ${porcion})">
+              onclick="agregarDesdeRecomendacion(${alimentoId}, '${nombreEscapado}', ${cal100}, ${prot100}, ${carb100}, ${gras100}, ${gramos})">
               Agregar
             </button>
             <button type="button" style="background:none; border:1px solid var(--border-color); border-radius:6px; padding:4px 8px; cursor:pointer; font-size:14px; color:var(--color-warning);"
-              onclick="abrirModalGuardarFavorito('${item.nombre.replace(/'/g, "\\'")}', ${porcion}, '${unidad}', ${item.calorias || 0}, ${item.proteinas || 0}, ${item.carbohidratos || 0}, ${item.grasas || 0})">
+              onclick="abrirModalGuardarFavorito(${alimentoId}, '${nombreEscapado}', ${gramos}, 'g', ${kcal}, ${proteina}, ${carbohidratos}, ${grasas})">
               ♡
             </button>
           </div>
@@ -2426,18 +2441,27 @@ function renderFavoritosSeccion(favoritos) {
   const itemsHTML = favoritos.slice(0, 5).map(fav => {
     const kcal = Math.round(fav.calorias_base || 0);
     const proteina = Math.round((fav.proteinas_base || 0) * 10) / 10;
+    const nombreEscapado = fav.nombre_personalizado.replace(/'/g, "\\'");
+    // Un favorito sin alimento_id (ej. de un escaneo IA sin match nutricional)
+    // no puede registrarse: registrar_comida.php exige un alimento_id real.
+    const puedeAgregarse = !!fav.alimento_id;
 
     return `
-      <div class="favorite-item" style="background:var(--bg-secondary); border-radius:8px; padding:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+      <div class="favorite-item" style="background:var(--bg-secondary); border-radius:8px; padding:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
         <div style="flex:1;">
           <div style="font-weight:600; font-size:14px;"><span style="color:var(--color-warning);">♡</span> ${fav.nombre_personalizado}</div>
           <div style="font-size:12px; color:var(--text-secondary);">${fav.gramos_base} ${fav.unidad}</div>
           <div style="font-size:13px; margin-top:4px;"><strong>${kcal}</strong> kcal · <strong>${proteina}g</strong> proteína</div>
         </div>
-        <button type="button" class="btn btn-primary" style="padding:6px 12px; font-size:12px;"
-          onclick="agregarFavoritoAlDia(${fav.id}, '${fav.nombre_personalizado.replace(/'/g, "\\'")}', ${fav.calorias_base}, ${fav.proteinas_base}, ${fav.carbohidratos_base}, ${fav.grasas_base}, ${fav.gramos_base})">
-          Agregar
-        </button>
+        <div style="display:flex; gap:6px; align-items:center;">
+          ${puedeAgregarse ? `
+          <button type="button" class="btn btn-primary" style="padding:6px 12px; font-size:12px; white-space:nowrap;"
+            onclick="agregarFavoritoAlDia(${fav.id}, ${fav.alimento_id}, '${nombreEscapado}', ${fav.calorias_base}, ${fav.proteinas_base}, ${fav.carbohidratos_base}, ${fav.grasas_base}, ${fav.gramos_base})">
+            Agregar
+          </button>` : `<span style="font-size:11px; color:var(--text-secondary);">Sin match</span>`}
+          <button type="button" style="background:none; border:none; cursor:pointer; font-size:15px; color:var(--text-secondary); padding:4px;"
+            onclick="eliminarFavorito(${fav.id})" title="Quitar de favoritos">✕</button>
+        </div>
       </div>
     `;
   }).join('');
@@ -2526,12 +2550,19 @@ async function buscarAlimentos(query) {
     return;
   }
 
-  container.innerHTML = res.data.map((a) => `
-    <div class="meal-item" style="cursor:pointer;" onclick="abrirModalRegistroComida(${a.id}, '${a.nombre_mostrado.replace(/'/g, "\\'")}', ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})">
-      <span>${a.nombre_mostrado}</span>
-      <span class="cal">${a.calorias_por_100g} kcal/100g</span>
+  container.innerHTML = res.data.map((a) => {
+    const nombreEscapado = a.nombre_mostrado.replace(/'/g, "\\'");
+    return `
+    <div class="meal-item" style="display:flex; align-items:center; gap:8px;">
+      <div style="flex:1; cursor:pointer;" onclick="abrirModalRegistroComida(${a.id}, '${nombreEscapado}', ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})">
+        <span>${a.nombre_mostrado}</span>
+        <span class="cal">${a.calorias_por_100g} kcal/100g</span>
+      </div>
+      <button type="button" style="background:none; border:none; cursor:pointer; font-size:15px; color:var(--color-warning); padding:4px;"
+        onclick="event.stopPropagation(); abrirModalGuardarFavorito(${a.id}, '${nombreEscapado}', 100, 'g', ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})" title="Guardar como favorito">♡</button>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 const TIPOS_COMIDA = [
@@ -2693,14 +2724,32 @@ function agregarDesdeRecomendacion(alimentoId, nombre, calorias, proteinas, carb
   abrirModalRegistroComida(alimentoId, nombre, calorias, proteinas, carbohidratos, grasas, gramosBase);
 }
 
-async function agregarFavoritoAlDia(favoritoId, nombre, calorias, proteinas, carbohidratos, grasas, gramosBase) {
-  // Registrar uso del favorito
-  await Api.favoritosActualizar(favoritoId, {});
-  // Usar el modal existente con los datos del favorito
-  abrirModalRegistroComida(favoritoId, nombre, calorias, proteinas, carbohidratos, grasas, gramosBase);
+async function agregarFavoritoAlDia(favoritoId, alimentoId, nombre, caloriasBase, proteinasBase, carbohidratosBase, grasasBase, gramosBase) {
+  // Registrar el uso (contador + fecha) sin bloquear la apertura del modal.
+  Api.favoritosMarcarUso(favoritoId).catch(() => {});
+
+  // abrirModalRegistroComida recalcula proporcionalmente asumiendo macros
+  // "por 100g" — normalizamos desde los valores guardados en gramosBase.
+  const factor100 = gramosBase > 0 ? 100 / gramosBase : 1;
+  abrirModalRegistroComida(
+    alimentoId,
+    nombre,
+    caloriasBase * factor100,
+    proteinasBase * factor100,
+    carbohidratosBase * factor100,
+    grasasBase * factor100,
+    gramosBase
+  );
 }
 
-function abrirModalGuardarFavorito(nombre, gramos, unidad, calorias, proteinas, carbohidratos, grasas, esCompuesto = false, metadata = null) {
+async function eliminarFavorito(favoritoId) {
+  const res = await Api.favoritosEliminar(favoritoId);
+  if (!res.success) { showToast(res.message); return; }
+  showToast('Favorito eliminado.');
+  await renderNutricion();
+}
+
+function abrirModalGuardarFavorito(alimentoId, nombre, gramos, unidad, calorias, proteinas, carbohidratos, grasas, esCompuesto = false, metadata = null) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.id = 'modal-guardar-favorito';
@@ -2722,7 +2771,7 @@ function abrirModalGuardarFavorito(nombre, gramos, unidad, calorias, proteinas, 
 
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" onclick="cerrarModalGuardarFavorito()">Cancelar</button>
-        <button type="button" class="btn btn-primary" onclick="confirmarGuardarFavorito('${nombre.replace(/'/g, "\\'")}', ${gramos}, '${unidad}', ${calorias}, ${proteinas}, ${carbohidratos}, ${grasas}, ${esCompuesto ? 1 : 0})">Guardar</button>
+        <button type="button" class="btn btn-primary" onclick="confirmarGuardarFavorito(${alimentoId || 'null'}, '${nombre.replace(/'/g, "\\'")}', ${gramos}, '${unidad}', ${calorias}, ${proteinas}, ${carbohidratos}, ${grasas}, ${esCompuesto ? 1 : 0})">Guardar</button>
       </div>
     </div>
   `;
@@ -2736,7 +2785,7 @@ function cerrarModalGuardarFavorito() {
   if (modal) modal.remove();
 }
 
-async function confirmarGuardarFavorito(nombreOriginal, gramos, unidad, calorias, proteinas, carbohidratos, grasas, esCompuesto) {
+async function confirmarGuardarFavorito(alimentoId, nombreOriginal, gramos, unidad, calorias, proteinas, carbohidratos, grasas, esCompuesto) {
   const nombrePersonalizado = document.getElementById('favorito-nombre').value.trim();
   if (!nombrePersonalizado) { showToast('Ingresá un nombre.'); return; }
 
@@ -2744,7 +2793,7 @@ async function confirmarGuardarFavorito(nombreOriginal, gramos, unidad, calorias
 
   const res = await Api.favoritosCrear({
     nombre_personalizado: nombrePersonalizado,
-    alimento_id: null,
+    alimento_id: alimentoId || null,
     gramos_base: parseFloat(gramos),
     unidad: unidad,
     calorias_base: parseFloat(calorias),
@@ -2760,37 +2809,47 @@ async function confirmarGuardarFavorito(nombreOriginal, gramos, unidad, calorias
   await renderNutricion();
 }
 
-async function abrirGeneradorRecetas() {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.id = 'modal-generar-receta';
-  overlay.innerHTML = `
-    <div class="modal-card" style="max-width:600px;">
-      <div class="modal-header">
-        <div style="margin-bottom:8px;"><h3>Generar receta personalizada</h3></div>
-      </div>
-      <div id="receta-contenido" style="padding:20px; text-align:center;">
-        <div style="margin-bottom:10px;">Cargando receta...</div>
-        <div class="spinner" style="display:inline-block;"></div>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" onclick="cerrarModalReceta()">Cerrar</button>
-      </div>
-    </div>
-  `;
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) cerrarModalReceta(); });
-  document.body.appendChild(overlay);
+let recetaActualModal = null;
 
-  // Cargar receta desde backend
-  const res = await Api.receta();
+async function abrirGeneradorRecetas(regenerar = false) {
+  if (!document.getElementById('modal-generar-receta')) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'modal-generar-receta';
+    overlay.innerHTML = `
+      <div class="modal-card" style="max-width:600px;">
+        <div class="modal-header">
+          <div style="margin-bottom:8px;"><h3>Generar receta personalizada</h3></div>
+        </div>
+        <div id="receta-contenido" style="padding:20px; text-align:center;">
+          <div style="margin-bottom:10px;">Cargando receta...</div>
+          <div class="spinner" style="display:inline-block;"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" onclick="cerrarModalReceta()">Cerrar</button>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cerrarModalReceta(); });
+    document.body.appendChild(overlay);
+  }
+
   const contenido = document.getElementById('receta-contenido');
+  contenido.innerHTML = `<div style="margin-bottom:10px;">Cargando receta...</div><div class="spinner" style="display:inline-block;"></div>`;
+
+  const res = await Api.receta(null, regenerar);
 
   if (!res.success) {
+    recetaActualModal = null;
     contenido.innerHTML = `<p style="color:var(--text-secondary);">No se pudo generar la receta: ${res.message}</p>`;
     return;
   }
 
   const receta = res.data;
+  recetaActualModal = receta;
+  const porPorcion = receta.nutricion_por_porcion || {};
+  const ingredientesConId = (receta.ingredientes || []).filter(ing => ing.alimento_id);
+
   contenido.innerHTML = `
     <div style="text-align:left;">
       <h4 style="font-size:16px; margin-bottom:8px;">${receta.nombre}</h4>
@@ -2798,31 +2857,57 @@ async function abrirGeneradorRecetas() {
 
       <div style="background:var(--bg-secondary); border-radius:8px; padding:12px; margin-bottom:16px;">
         <div style="font-size:12px;"><strong>${receta.porciones}</strong> porciones</div>
-        <div style="font-size:12px;">Tiempo: <strong>${receta.tiempo_preparacion_minutos}</strong> min</div>
-        <div style="font-size:13px; margin-top:8px;"><strong>${Math.round(receta.calorias_por_porcion)}</strong> kcal/porción</div>
-        <div style="font-size:12px;">Proteína: ${Math.round(receta.proteinas_por_porcion * 10) / 10}g · Carbos: ${Math.round(receta.carbohidratos_por_porcion * 10) / 10}g · Grasas: ${Math.round(receta.grasas_por_porcion * 10) / 10}g</div>
+        <div style="font-size:12px;">Tiempo: <strong>${receta.tiempo_minutos}</strong> min</div>
+        <div style="font-size:13px; margin-top:8px;"><strong>${Math.round(porPorcion.calorias || 0)}</strong> kcal/porción</div>
+        <div style="font-size:12px;">Proteína: ${Math.round((porPorcion.proteinas || 0) * 10) / 10}g · Carbos: ${Math.round((porPorcion.carbohidratos || 0) * 10) / 10}g · Grasas: ${Math.round((porPorcion.grasas || 0) * 10) / 10}g</div>
       </div>
 
       <div style="margin-bottom:16px;">
         <h5 style="font-size:13px; font-weight:600; margin-bottom:8px;">Ingredientes:</h5>
         <ul style="margin:0; padding-left:20px; font-size:13px; line-height:1.6;">
-          ${(receta.ingredientes || []).map(ing => `<li>${ing}</li>`).join('')}
+          ${(receta.ingredientes || []).map(ing => `<li>${ing.nombre} — ${Math.round(ing.gramos)}g</li>`).join('')}
         </ul>
       </div>
 
-      <div>
+      <div style="margin-bottom:16px;">
         <h5 style="font-size:13px; font-weight:600; margin-bottom:8px;">Pasos:</h5>
         <ol style="margin:0; padding-left:20px; font-size:13px; line-height:1.6;">
           ${(receta.pasos || []).map(paso => `<li style="margin-bottom:6px;">${paso}</li>`).join('')}
         </ol>
       </div>
+
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-ghost" style="flex:1;" onclick="abrirGeneradorRecetas(true)">Generar otra</button>
+        <button type="button" class="btn btn-primary" style="flex:1;" ${ingredientesConId.length === 0 ? 'disabled' : ''} onclick="agregarRecetaAlDia()">Agregar al día</button>
+      </div>
     </div>
   `;
+}
+
+async function agregarRecetaAlDia() {
+  if (!recetaActualModal) return;
+  const ingredientes = (recetaActualModal.ingredientes || []).filter(ing => ing.alimento_id);
+  if (ingredientes.length === 0) { showToast('Esta receta no tiene ingredientes registrables.'); return; }
+
+  const momentosValidos = ['desayuno', 'almuerzo', 'merienda', 'cena'];
+  const tipo = momentosValidos.includes(recetaActualModal.momento) ? recetaActualModal.momento : 'snack';
+
+  let ultimoXP = null;
+  for (const ing of ingredientes) {
+    const res = await Api.registrarComida({ alimento_id: ing.alimento_id, tipo_comida: tipo, gramos: ing.gramos, origen: 'manual' });
+    if (res.success) ultimoXP = res.data.xp;
+  }
+
+  if (ultimoXP) await handleXPResult(ultimoXP);
+  cerrarModalReceta();
+  await renderNutricion();
+  showToast('Receta agregada a tu día.');
 }
 
 function cerrarModalReceta() {
   const modal = document.getElementById('modal-generar-receta');
   if (modal) modal.remove();
+  recetaActualModal = null;
 }
 
 // =====================================================================
@@ -3209,7 +3294,10 @@ function renderItemsDetectadosCamara() {
       <div class="meal-item" style="flex-direction:column;align-items:stretch;gap:6px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="font-size:12.5px;font-weight:600;">${item.nombre}</span>
-          <button type="button" class="btn-link-editar" onclick="editarItemDetectadoCamara(${idx})">Editar</button>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <button type="button" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--color-warning);padding:0;" onclick="guardarFavoritoDesdeCamara(${idx})" title="Guardar como favorito">♡</button>
+            <button type="button" class="btn-link-editar" onclick="editarItemDetectadoCamara(${idx})">Editar</button>
+          </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <input type="number" min="1" step="1" value="${Math.round(item.gramos)}" style="width:70px;" oninput="actualizarGramosItemCamara(${idx}, this.value)" />
@@ -3277,6 +3365,21 @@ function actualizarTotalPlatoCamara() {
 function editarItemDetectadoCamara(idx) {
   const item = itemsDetectadosCamara[idx];
   abrirModalRegistroComida(item.alimentoId, item.nombre, item.calorias100g, item.proteinas100g, item.carbohidratos100g, item.grasas100g, item.gramos);
+}
+
+function guardarFavoritoDesdeCamara(idx) {
+  const item = itemsDetectadosCamara[idx];
+  const factor = item.gramos / 100;
+  abrirModalGuardarFavorito(
+    item.alimentoId,
+    item.nombre,
+    Math.round(item.gramos),
+    'g',
+    item.calorias100g * factor,
+    item.proteinas100g * factor,
+    item.carbohidratos100g * factor,
+    item.grasas100g * factor
+  );
 }
 
 let debounceTimerReemplazo = null;
