@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/HttpRequestBudget.php';
 
 /**
  * NutriFit — Cliente HTTP para reconocimiento de alimentos con la API de
@@ -21,12 +22,9 @@ class GeminiVisionClient
     // con la misma request. Si en el futuro esto vuelve a fallar, probar de
     // nuevo con el alias -latest por si ya se estabilizó.
     private const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent';
-    // El nivel gratuito de Gemini puede tardar mucho o devolver 503 "high
-    // demand" en horas pico (se midió hasta ~18s de proceso del lado de
-    // Google para un pedido trivial durante las pruebas) — timeout generoso
-    // + un reintento absorben esos picos sin que el usuario vea un error.
-    private const TIMEOUT_SEGUNDOS = 45;
-    private const REINTENTOS = 1;
+    // Leave time for nutritional lookups and a JSON response before Heroku
+    // terminates the request at 30 seconds. No synchronous retry on overload.
+    private const TIMEOUT_SEGUNDOS = 18;
 
     private string $apiKey;
 
@@ -88,12 +86,6 @@ class GeminiVisionClient
         ];
 
         $respuesta = $this->httpPost($payload);
-        $intentos = 0;
-        while (isset($respuesta['_error']) && ($respuesta['_reintentable'] ?? false) && $intentos < self::REINTENTOS) {
-            $intentos++;
-            sleep(2);
-            $respuesta = $this->httpPost($payload);
-        }
         if (isset($respuesta['_error'])) {
             throw new RuntimeException($respuesta['_error']);
         }
@@ -123,8 +115,8 @@ class GeminiVisionClient
                 'Content-Type: application/json',
                 'x-goog-api-key: ' . $this->apiKey,
             ],
-            CURLOPT_CONNECTTIMEOUT => self::TIMEOUT_SEGUNDOS,
-            CURLOPT_TIMEOUT => self::TIMEOUT_SEGUNDOS,
+            CURLOPT_CONNECTTIMEOUT_MS => HttpRequestBudget::timeoutMs(5),
+            CURLOPT_TIMEOUT_MS => HttpRequestBudget::timeoutMs(self::TIMEOUT_SEGUNDOS),
             CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         ]);
 
@@ -142,14 +134,9 @@ class GeminiVisionClient
 
         if ($httpCode !== 200) {
             $mensaje = is_array($decoded) ? ($decoded['error']['message'] ?? "HTTP $httpCode") : "HTTP $httpCode";
-            // Solo 503 (sobrecarga transitoria del servidor) vale la pena
-            // reintentar. Un 429 del nivel gratuito casi siempre es la CUOTA
-            // DIARIA agotada (ej. "limit: 20, free_tier_requests") — 2
-            // segundos después sigue agotada, así que reintentar solo
-            // quema otro de los pocos requests/día disponibles sin chance
-            // real de éxito.
-            $reintentable = $httpCode === 503;
-            return ['_error' => 'Error de la API de Gemini: ' . $mensaje, '_reintentable' => $reintentable];
+            // Preserve the real provider failure; retrying synchronously
+            // can exceed the router deadline and also spend extra quota.
+            return ['_error' => 'Error de la API de Gemini: ' . $mensaje];
         }
 
         return is_array($decoded) ? $decoded : [];

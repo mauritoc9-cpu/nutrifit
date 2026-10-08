@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/HttpRequestBudget.php';
 
 /**
  * NutriFit — Traducción ES<->EN de nombres de alimentos, con caché en la
@@ -278,8 +279,8 @@ class TraductorAlimentos
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_CONNECTTIMEOUT => self::TIMEOUT_SEGUNDOS,
-            CURLOPT_TIMEOUT => self::TIMEOUT_SEGUNDOS,
+            CURLOPT_CONNECTTIMEOUT_MS => HttpRequestBudget::timeoutMs(self::TIMEOUT_SEGUNDOS),
+            CURLOPT_TIMEOUT_MS => HttpRequestBudget::timeoutMs(self::TIMEOUT_SEGUNDOS),
             CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         ]);
 

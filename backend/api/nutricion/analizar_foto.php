@@ -28,6 +28,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 requireAuth();
+// Finish upstream calls before Heroku's 30-second router/FPM limit.
+HttpRequestBudget::start(24);
+set_exception_handler(static function (Throwable $error): void {
+    error_log('[analizar_foto] Unhandled error: ' . get_class($error) . ' code=' . $error->getCode());
+    responderError($error instanceof HttpRequestBudgetExceeded ? ErrorEscaner::TIEMPO_AGOTADO : ErrorEscaner::ERROR_SERVIDOR, 503);
+});
 
 $body = getJsonBody();
 $imagenBase64 = (string) ($body['imagen_base64'] ?? '');
@@ -139,6 +145,7 @@ $alimentosResueltos = [];
 $totales = ['calorias' => 0.0, 'proteinas' => 0.0, 'carbohidratos' => 0.0, 'grasas' => 0.0];
 
 foreach ($resultadoVision['alimentos'] as $item) {
+    HttpRequestBudget::timeoutMs(1);
     $nombre = (string) ($item['nombre'] ?? '');
     $gramos = (float) ($item['gramos_estimados'] ?? 0);
     $envasado = (bool) ($item['envasado'] ?? false);

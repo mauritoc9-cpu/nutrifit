@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/HttpRequestBudget.php';
 
 /**
  * NutriFit — Cliente HTTP para reconocimiento de alimentos con la API de
@@ -125,8 +126,8 @@ class ClaudeVisionClient
                 'x-api-key: ' . $this->apiKey,
                 'anthropic-version: ' . self::ANTHROPIC_VERSION,
             ],
-            CURLOPT_CONNECTTIMEOUT => self::TIMEOUT_SEGUNDOS,
-            CURLOPT_TIMEOUT => self::TIMEOUT_SEGUNDOS,
+            CURLOPT_CONNECTTIMEOUT_MS => HttpRequestBudget::timeoutMs(5),
+            CURLOPT_TIMEOUT_MS => HttpRequestBudget::timeoutMs(self::TIMEOUT_SEGUNDOS),
             // Ver el comentario equivalente en GeminiVisionClient: el libcurl
             // 7.76 de XAMPP se cuelga esperando respuesta por HTTP/2 con
             // algunos servidores. Forzar HTTP/1.1 lo evita.

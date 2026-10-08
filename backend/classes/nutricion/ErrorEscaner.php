@@ -27,8 +27,10 @@ final class ErrorEscaner
     public const IA_NO_CONFIGURADA = 'IA_NO_CONFIGURADA';
     public const ERROR_CONEXION = 'ERROR_CONEXION';
     public const RESPUESTA_INVALIDA = 'RESPUESTA_INVALIDA';
+    public const TIEMPO_AGOTADO = 'TIEMPO_AGOTADO';
 
     private const MENSAJES = [
+        self::TIEMPO_AGOTADO => 'El análisis con IA tardó demasiado. Intentá nuevamente o buscá el alimento a mano.',
         self::NO_ALIMENTOS => 'No encontramos alimentos reconocibles en esta foto. Probá con otra toma o buscá el alimento a mano.',
         self::FORMATO_NO_COMPATIBLE => 'El formato de esa imagen no es compatible. Probá con una foto JPG o PNG.',
         self::ARCHIVO_DEMASIADO_GRANDE => 'La imagen es demasiado grande. Probá con una foto de menor resolución.',
@@ -53,6 +55,7 @@ final class ErrorEscaner
      */
     public static function desdeExcepcion(Throwable $e): string
     {
+        if ($e instanceof HttpRequestBudgetExceeded) return self::TIEMPO_AGOTADO;
         $texto = mb_strtolower($e->getMessage());
 
         if (str_contains($texto, 'api key') || str_contains($texto, 'api_key') || str_contains($texto, 'unauthor')) {

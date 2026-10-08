@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/HttpRequestBudget.php';
 
 /**
  * NutriFit — Cliente HTTP para Open Food Facts.
@@ -77,8 +78,8 @@ class OpenFoodFactsClient
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => self::TIMEOUT_SEGUNDOS,
-            CURLOPT_TIMEOUT => self::TIMEOUT_SEGUNDOS,
+            CURLOPT_CONNECTTIMEOUT_MS => HttpRequestBudget::timeoutMs(self::TIMEOUT_SEGUNDOS),
+            CURLOPT_TIMEOUT_MS => HttpRequestBudget::timeoutMs(self::TIMEOUT_SEGUNDOS),
             // Open Food Facts pide un User-Agent descriptivo para identificar la app.
             CURLOPT_USERAGENT => 'NutriFit/1.0 (buscador de alimentos; contacto: nutrifit.argentina2026@gmail.com)',
             CURLOPT_FAILONERROR => true,

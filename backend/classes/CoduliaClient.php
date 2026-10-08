@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/HttpRequestBudget.php';
 
 /**
  * NutriFit — Cliente HTTP para Codulia (https://nutricion-api-arg.fly.dev),
@@ -142,8 +143,8 @@ class CoduliaClient
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => ['x-api-key: ' . $this->apiKey],
-            CURLOPT_CONNECTTIMEOUT => self::TIMEOUT_SEGUNDOS,
-            CURLOPT_TIMEOUT => self::TIMEOUT_SEGUNDOS,
+            CURLOPT_CONNECTTIMEOUT_MS => HttpRequestBudget::timeoutMs(self::TIMEOUT_SEGUNDOS),
+            CURLOPT_TIMEOUT_MS => HttpRequestBudget::timeoutMs(self::TIMEOUT_SEGUNDOS),
             CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         ]);
 

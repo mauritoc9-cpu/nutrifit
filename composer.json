@@ -1,1 +1,10 @@
-{}
+{
+  "require": {
+    "ext-mbstring": "*",
+    "ext-curl": "*",
+    "ext-pdo_mysql": "*"
+  },
+  "config": {
+    "allow-plugins": false
+  }
+}
