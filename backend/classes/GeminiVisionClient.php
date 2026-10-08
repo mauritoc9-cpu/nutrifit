@@ -55,6 +55,8 @@ class GeminiVisionClient
                 ],
             ]],
             'generationConfig' => [
+                // Gemini 3.6 supports minimal thinking for latency-sensitive classification.
+                'thinkingConfig' => ['thinkingLevel' => 'minimal'],
                 'responseMimeType' => 'application/json',
                 'responseSchema' => [
                     'type' => 'object',
@@ -90,7 +92,11 @@ class GeminiVisionClient
             throw new RuntimeException($respuesta['_error']);
         }
 
-        $textoJson = $respuesta['candidates'][0]['content']['parts'][0]['text'] ?? null;
+        $textoJson = null;
+        foreach ($respuesta['candidates'][0]['content']['parts'] ?? [] as $part) {
+            if (!empty($part['thought']) || !isset($part['text'])) continue;
+            $textoJson = ($textoJson ?? '') . $part['text'];
+        }
         if ($textoJson === null) {
             throw new RuntimeException('Gemini no devolvió una respuesta de texto.');
         }
@@ -124,9 +130,19 @@ class GeminiVisionClient
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_errno($ch);
         $curlErrorMsg = curl_error($ch);
-        curl_close($ch);
+        $timing = curl_getinfo($ch);
 
         if ($curlError !== 0 || $body === false) {
+            // Only transport timings: no image, URL, API key, or request headers.
+            error_log('[GeminiVision] transport=' . json_encode([
+                'curl' => $curlError,
+                'dns_seconds' => $timing['namelookup_time'] ?? null,
+                'connect_seconds' => $timing['connect_time'] ?? null,
+                'tls_seconds' => $timing['appconnect_time'] ?? null,
+                'first_byte_seconds' => $timing['starttransfer_time'] ?? null,
+                'total_seconds' => $timing['total_time'] ?? null,
+                'uploaded_bytes' => $timing['size_upload'] ?? null,
+            ]));
             return ['_error' => "No se pudo conectar con la API de Gemini (curl $curlError: $curlErrorMsg)."];
         }
 

@@ -7,7 +7,7 @@ $options = []; $calls = 0; $status = 503; $transportError = 0;
 function curl_init($url) { return $url; }
 function curl_setopt_array($ch, $value) { $GLOBALS['options'] = $value; return true; }
 function curl_exec($ch) { $GLOBALS['calls']++; return $GLOBALS['transportError'] ? false : json_encode($GLOBALS['response']); }
-function curl_getinfo($ch, $info) { return $GLOBALS['status']; }
+function curl_getinfo($ch, $info = null) { return $info === null ? [] : $GLOBALS['status']; }
 function curl_errno($ch) { return $GLOBALS['transportError']; }
 function curl_error($ch) { return 'Operation timed out'; }
 function curl_close($ch) {}
@@ -20,6 +20,8 @@ try { (new GeminiVisionClient('test-not-a-real-key'))->identificarAlimentos('tes
 catch (RuntimeException $e) { check(str_contains($e->getMessage(), 'Provider overloaded'), '503 remains a real provider error'); }
 check($calls === 1, 'no blocking retry after 503');
 check($options[CURLOPT_TIMEOUT_MS] <= 18000 && $options[CURLOPT_CONNECTTIMEOUT_MS] <= 5000, 'vision timeout stays below Heroku limit');
+$payload = json_decode($options[CURLOPT_POSTFIELDS], true);
+check(($payload['generationConfig']['thinkingConfig']['thinkingLevel'] ?? '') === 'minimal', 'image classification requests minimal thinking');
 HttpRequestBudget::start(0.5);
 check(HttpRequestBudget::timeoutMs(25) <= 500, 'fallback calls share the remaining request budget');
 HttpRequestBudget::start(-1);
@@ -28,7 +30,7 @@ try { (new GeminiVisionClient('test-not-a-real-key'))->identificarAlimentos('tes
 catch (HttpRequestBudgetExceeded $e) { check($calls === $previous, 'expired budget prevents another upstream call'); }
 HttpRequestBudget::start(24);
 $status = 200;
-$response = ['candidates' => [['content' => ['parts' => [['text' => json_encode(['es_comida'=>true,'alimentos'=>[['nombre'=>'milanesa','gramos_estimados'=>150,'envasado'=>false]]])]]]]]];
+$response = ['candidates' => [['content' => ['parts' => [['thought'=>true,'text'=>'Internal reasoning'], ['text' => json_encode(['es_comida'=>true,'alimentos'=>[['nombre'=>'milanesa','gramos_estimados'=>150,'envasado'=>false]]])]]]]]];
 $result = (new GeminiVisionClient('test-not-a-real-key'))->identificarAlimentos('test-image');
 check($result['alimentos'][0]['nombre'] === 'milanesa', 'successful vision result keeps original contract');
 $transportError = 28;
