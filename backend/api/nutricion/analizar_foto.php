@@ -145,7 +145,6 @@ $alimentosResueltos = [];
 $totales = ['calorias' => 0.0, 'proteinas' => 0.0, 'carbohidratos' => 0.0, 'grasas' => 0.0];
 
 foreach ($resultadoVision['alimentos'] as $item) {
-    HttpRequestBudget::timeoutMs(1);
     $nombre = (string) ($item['nombre'] ?? '');
     $gramos = (float) ($item['gramos_estimados'] ?? 0);
     $envasado = (bool) ($item['envasado'] ?? false);
@@ -154,7 +153,11 @@ foreach ($resultadoVision['alimentos'] as $item) {
         continue;
     }
 
-    $match = $resolver->resolverParaCamara($nombre, $envasado);
+    try {
+        $match = $resolver->resolverParaCamara($nombre, $envasado);
+    } catch (HttpRequestBudgetExceeded $e) {
+        $match = null;
+    }
     $factor = $gramos / 100;
 
     if ($match === null) {
@@ -204,6 +207,7 @@ respond(true, [
     'es_comida' => true,
     'descripcion' => $resultadoVision['descripcion'] ?? '',
     'alimentos' => $alimentosResueltos,
+    'nutricion_completa' => !in_array('sin_match', array_column($alimentosResueltos, 'confianza'), true),
     'total' => [
         'calorias' => round($totales['calorias'], 1),
         'proteinas' => round($totales['proteinas'], 1),

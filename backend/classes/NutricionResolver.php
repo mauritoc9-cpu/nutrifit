@@ -47,7 +47,19 @@ class NutricionResolver
      */
     public function resolverParaCamara(string $nombreDetectado, bool $envasado): ?array
     {
-        $candidatos = $this->recolectarYPrepararCandidatos($nombreDetectado, $envasado, self::LIMITE_CANDIDATOS_EXTERNOS);
+        // The camera needs one match, unlike the manual search's list of variants.
+        $candidatos = $this->recolectarYPrepararCandidatos($nombreDetectado, $envasado, self::LIMITE_CANDIDATOS_EXTERNOS, true);
+        $exactos = array_filter($candidatos, static fn ($c) => $c['score'] >= 1000);
+        if ($exactos !== []) {
+            $candidatos = array_values($exactos);
+        } else {
+            try {
+                HttpRequestBudget::timeoutMs(1);
+                $candidatos = $this->recolectarYPrepararCandidatos($nombreDetectado, $envasado, self::LIMITE_CANDIDATOS_EXTERNOS);
+            } catch (HttpRequestBudgetExceeded $e) {
+                // Keep validated local matches when remote enrichment runs out of time.
+            }
+        }
         if ($candidatos === []) {
             $this->registrarNoResuelto($nombreDetectado, 'camara');
             return null;
@@ -98,7 +110,7 @@ class NutricionResolver
     }
 
     /** @return array<int, array<string, mixed>> candidatos ya validados, traducidos y con `score` */
-    private function recolectarYPrepararCandidatos(string $consulta, bool $envasado, int $limite): array
+    private function recolectarYPrepararCandidatos(string $consulta, bool $envasado, int $limite, bool $soloLocal = false): array
     {
         $locales = $this->repo->buscarLocal($consulta, self::LIMITE_CANDIDATOS_LOCAL);
 
@@ -107,7 +119,7 @@ class NutricionResolver
         // atajo por "coincidencia fuerte" (un solo match exacto/prefijo)
         // que cortaba de más: alcanzaba con UN alimento tipo "Fideos" para
         // no ir nunca a buscar más variantes, aunque hubiera pocas.
-        $externos = count($locales) >= $limite
+        $externos = $soloLocal || count($locales) >= $limite
             ? []
             : $this->repo->buscarExternos($consulta, $this->traductor->aIngles($consulta), $envasado, self::LIMITE_CANDIDATOS_EXTERNOS);
 
@@ -129,7 +141,14 @@ class NutricionResolver
                 $nombresATraducir[] = $c['nombre'];
             }
         }
-        $traducciones = $nombresATraducir !== [] ? $this->traductor->aEspanolLote($nombresATraducir) : [];
+        $traducciones = [];
+        if (!$soloLocal && $nombresATraducir !== []) {
+            try {
+                $traducciones = $this->traductor->aEspanolLote($nombresATraducir);
+            } catch (HttpRequestBudgetExceeded $e) {
+                // Translation must not discard nutritional candidates already retrieved.
+            }
+        }
 
         $preparados = [];
         foreach ($todos as $c) {
