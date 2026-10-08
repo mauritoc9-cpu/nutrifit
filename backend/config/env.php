@@ -10,6 +10,13 @@ declare(strict_types=1);
  */
 function env(string $key, ?string $default = null): ?string
 {
+    // Heroku config vars take precedence. An explicit empty value must not
+    // silently reactivate an old credential from a local .env file.
+    $processValue = getenv($key);
+    if ($processValue !== false) {
+        return $processValue;
+    }
+
     static $vars = null;
 
     if ($vars === null) {
