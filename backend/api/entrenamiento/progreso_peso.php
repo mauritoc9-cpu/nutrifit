@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $body = getJsonBody();
     $peso = (float) ($body['peso'] ?? 0);
 
-    if ($peso <= 0) {
+    if (!is_finite($peso) || $peso <= 0 || $peso > 400) {
         respond(false, null, 'Peso inválido.', 422);
     }
 

@@ -109,6 +109,18 @@ class NutricionResolver
         ], $candidatos);
     }
 
+    /** Chat: mismo scoring/validación; sin enviar ingredientes a otras APIs. */
+    public function buscarParaAsistente(string $consulta): array
+    {
+        $candidatos = $this->recolectarYPrepararCandidatos($consulta, false, 40, true);
+        $candidatos=array_values(array_filter($candidatos, fn($c) => $c['score'] >= self::UMBRAL_CONFIANZA_ALTA));
+        // Un ingrediente genérico del chat no debe convertirse en un snack envasado homónimo.
+        $curados=array_values(array_filter($candidatos,fn($c)=>($c['fuente']??'')==='local'));
+        if($curados)$candidatos=$curados;
+        usort($candidatos, fn($a,$b) => $b['score'] <=> $a['score']);
+        return array_slice($candidatos, 0, 8);
+    }
+
     /** @return array<int, array<string, mixed>> candidatos ya validados, traducidos y con `score` */
     private function recolectarYPrepararCandidatos(string $consulta, bool $envasado, int $limite, bool $soloLocal = false): array
     {

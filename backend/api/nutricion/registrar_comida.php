@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../config/bootstrap.php';
 require_once __DIR__ . '/../../classes/SistemaXP.php';
+require_once __DIR__ . '/../../classes/gamificacion/GamificacionService.php';
 
 $usuarioId = requireAuth();
 
@@ -27,61 +28,22 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $body = getJsonBody();
 
-$alimentoId = (int) ($body['alimento_id'] ?? 0);
-$tipoComida = (string) ($body['tipo_comida'] ?? '');
-$gramos = (float) ($body['gramos'] ?? 0);
-$origen = in_array($body['origen'] ?? 'manual', ['manual', 'camara_ia'], true) ? $body['origen'] : 'manual';
-
-$tiposValidos = ['desayuno', 'almuerzo', 'merienda', 'cena', 'snack'];
-if ($alimentoId <= 0 || !in_array($tipoComida, $tiposValidos, true) || $gramos <= 0) {
-    respond(false, null, 'Datos de la comida inválidos.', 422);
-}
-
-$db = (new Database())->getConnection();
-
-$stmt = $db->prepare('SELECT * FROM alimentos WHERE id = :id');
-$stmt->execute(['id' => $alimentoId]);
-$alimento = $stmt->fetch();
-
-if (!$alimento) {
-    respond(false, null, 'Alimento no encontrado.', 404);
-}
-
-$factor = $gramos / 100;
-$calorias = round($alimento['calorias_por_100g'] * $factor, 2);
-$proteinas = round($alimento['proteinas'] * $factor, 2);
-$carbohidratos = round($alimento['carbohidratos'] * $factor, 2);
-$grasas = round($alimento['grasas'] * $factor, 2);
-
-$insert = $db->prepare(
-    'INSERT INTO registros_comidas
-     (usuario_id, alimento_id, tipo_comida, gramos, calorias_totales,
-      proteinas_totales, carbohidratos_totales, grasas_totales, origen, fecha)
-     VALUES (:uid, :aid, :tipo, :gramos, :cal, :prot, :carb, :gras, :origen, CURDATE())'
-);
-$insert->execute([
-    'uid'    => $usuarioId,
-    'aid'    => $alimentoId,
-    'tipo'   => $tipoComida,
-    'gramos' => $gramos,
-    'cal'    => $calorias,
-    'prot'   => $proteinas,
-    'carb'   => $carbohidratos,
-    'gras'   => $grasas,
-    'origen' => $origen,
-]);
-
-$xpSystem = new SistemaXP($db);
-$resultadoXP = $xpSystem->otorgarXP($usuarioId, SistemaXP::XP_COMIDA);
-
-respond(true, [
-    'registro' => [
-        'alimento'       => $alimento['nombre_mostrado'] ?? $alimento['nombre'],
-        'gramos'         => $gramos,
-        'calorias'       => $calorias,
-        'proteinas'      => $proteinas,
-        'carbohidratos'  => $carbohidratos,
-        'grasas'         => $grasas,
-    ],
-    'xp' => $resultadoXP,
-], 'Comida registrada correctamente.', 201);
+// El asistente usa el mismo endpoint, con propuesta del servidor y confirmación.
+require_once __DIR__.'/../../classes/nutricion/ComidaRegistroService.php';
+try {
+    $accion=$body['accion_asistente']??null;
+    if($accion!==null){
+        if(!is_string($accion)||array_diff(array_keys($body),['accion_asistente','confirmado','tipo_comida','csrf']))throw new ComidaRegistroError('Solicitud inválida.');
+        if(empty($_SESSION['asistente_csrf'])||!is_string($body['csrf']??null)||!hash_equals($_SESSION['asistente_csrf'],$body['csrf']))throw new ComidaRegistroError('Solicitud no autorizada.',403);
+        $origin=$_SERVER['HTTP_ORIGIN']??'';
+        if($origin!==''&&parse_url($origin,PHP_URL_HOST)!==explode(':',$_SERVER['HTTP_HOST']??'')[0])throw new ComidaRegistroError('Origen no autorizado.',403);
+        if(($body['confirmado']??false)!==true)throw new ComidaRegistroError('Falta confirmar explícitamente la comida.');
+    }
+    session_write_close();
+    $db=(new Database())->getConnection();
+    $r=(new ComidaRegistroService($db))->registrar($usuarioId,(string)($body['tipo_comida']??''),
+        [['alimento_id'=>$body['alimento_id']??0,'gramos'=>$body['gramos']??0]],
+        (string)($body['origen']??'manual'),$accion,($body['confirmado']??false)===true);
+    respond(true,$r,!empty($r['repetida'])?'Esta comida ya estaba registrada.':'Comida registrada correctamente.',!empty($r['repetida'])?200:201);
+} catch(ComidaRegistroError $e){respond(false,null,$e->getMessage(),$e->http);}
+catch(Throwable $e){respond(false,null,'No se pudo registrar la comida.',500);}

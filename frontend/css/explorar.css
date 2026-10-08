@@ -1,0 +1,31 @@
+.explorar { min-width:0; max-width:100%; }
+.explorar header p,.explorar-privacy,.explorar-credit { color:var(--text-secondary); }
+.explorar-search { display:flex; gap:8px; margin:20px 0 12px; }
+.explorar-search input { flex:1; min-width:0; border:1px solid var(--border-subtle); background:var(--bg-elevated); color:var(--text-primary); padding:12px; border-radius:var(--radius-md); font:inherit; }
+.explorar-search .btn { width:auto;flex-shrink:0; }
+.explorar button svg { width:18px;height:18px;flex-shrink:0; }
+.explorar-location { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.explorar-location span,.explorar-privacy,.explorar-credit { font-size:12px; line-height:1.6; }
+.explorar-zonas { display:grid;gap:8px;margin-bottom:12px; }
+.explorar-zonas button { text-align:left;white-space:normal;overflow-wrap:anywhere; }
+.explorar-filtros { display:flex;gap:8px;overflow-x:auto;margin:18px 0 12px;padding-bottom:4px; }
+.explorar-filtros button { display:flex;align-items:center;gap:6px;flex-shrink:0;border:1px solid var(--border-subtle);border-radius:var(--radius-full);padding:10px 14px;background:var(--bg-elevated);color:var(--text-primary);font:inherit;cursor:pointer; }
+.explorar-filtros button[aria-pressed=true] { background:var(--color-lima-soft);border-color:var(--color-lima);color:var(--color-lima-text); }
+.explorar-estado { font-size:13px;min-height:44px;padding:8px 0;color:var(--text-secondary);overflow-wrap:anywhere; }
+.explorar-mapa { height:420px;width:100%;border-radius:var(--radius-lg);border:1px solid var(--border-subtle);background:var(--bg-inset);isolation:isolate;z-index:0; }
+.explorar-mapa .leaflet-popup-content { color:#182221;overflow-wrap:anywhere; }
+.explorar-mapa .leaflet-popup-content button { display:block;margin-top:10px;border:0;background:#e1efcb;padding:8px;border-radius:6px;cursor:pointer; }
+.explorar-marker { background:#234c43;border:2px solid #fff;border-radius:50% 50% 50% 3px;color:white;box-shadow:0 3px 10px #0004;display:flex;align-items:center;justify-content:center; }
+.explorar-marker svg { width:18px;height:18px; }
+.explorar-marker-comida { background:#98652d; }.explorar-marker-suplementos { background:#725897; }
+.explorar-results-heading { display:flex;justify-content:space-between;align-items:center;margin-top:22px;gap:8px; }
+.explorar-results-heading h2 { font-size:20px; }
+.explorar-resultados { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-height:620px;overflow-y:auto;padding:3px; }
+.explorar-card { border:1px solid var(--border-subtle);background:var(--bg-elevated);border-radius:var(--radius-lg);padding:16px;min-width:0;overflow-wrap:anywhere;cursor:pointer; }
+.explorar-card.seleccionada { border-color:var(--color-lima);box-shadow:0 0 0 2px var(--color-lima-soft); }
+.explorar-card h3 { font-size:16px;margin:0 0 8px; }.explorar-card p { font-size:13px;line-height:1.5;margin:6px 0;color:var(--text-secondary); }
+.explorar-card-actions { display:flex;gap:8px;flex-wrap:wrap;margin-top:14px; }.explorar-card-actions .btn { font-size:12px;min-height:40px;flex:1;padding:9px;white-space:normal; }
+.explorar-credit { margin:16px 0; }.explorar-credit a { color:inherit; }
+.sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
+#explorar-area { margin-top:10px; }#explorar-area[hidden],#explorar-reintentar[hidden] { display:none; }
+@media(max-width:600px){.explorar-mapa{height:310px;}.explorar-resultados{grid-template-columns:minmax(0,1fr);max-height:520px;}.explorar-search .btn{padding:10px;}.explorar-search .btn span{display:none;}.bottom-nav .nav-item{flex:1 1 0;min-width:0;padding:8px 1px;font-size:9px;}.explorar-location .btn{font-size:13px;}.explorar h1{font-size:26px;}}

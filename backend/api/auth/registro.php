@@ -41,6 +41,7 @@ try {
          SELECT :uid, id, 1 FROM tienda_items WHERE nombre = 'Remera NutriFit' LIMIT 1"
     )->execute(['uid' => $id]);
 
+    session_regenerate_id(true);
     $_SESSION['usuario_id'] = $id;
     $_SESSION['usuario_nombre'] = $nombre;
 

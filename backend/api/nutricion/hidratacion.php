@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../config/bootstrap.php';
 require_once __DIR__ . '/../../classes/SistemaXP.php';
+require_once __DIR__ . '/../../classes/gamificacion/GamificacionService.php';
 
 $usuarioId = requireAuth();
 $db = (new Database())->getConnection();
@@ -15,6 +16,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+    $db->beginTransaction();
+    $lock = $db->prepare('SELECT id FROM usuarios WHERE id = :id FOR UPDATE');
+    $lock->execute(['id' => $usuarioId]);
     // Inserta o incrementa el contador de vasos de hoy (upsert atómico).
     $db->prepare(
         'INSERT INTO registros_hidratacion (usuario_id, fecha, vasos)
@@ -30,10 +35,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Cada 3 vasos completados suma +5 XP (según la sección 5 del brief).
     if ($registro['vasos'] % 3 === 0) {
         $xpSystem = new SistemaXP($db);
-        $xpOtorgado = $xpSystem->otorgarXP($usuarioId, SistemaXP::XP_HIDRATACION);
+        $xpOtorgado = $xpSystem->otorgarXPConLimite($usuarioId, SistemaXP::XP_HIDRATACION, 'hidratacion', min(SistemaXP::MAX_HIDRATACION_XP_DIA, intdiv((int) $registro['vasos'], 3)));
     }
 
-    respond(true, ['registro' => $registro, 'xp' => $xpOtorgado], 'Vaso de agua registrado.');
+    $gamificacion = (new GamificacionService($db))->reconciliar($usuarioId, $xpOtorgado);
+    $db->commit();
+    respond(true, ['registro' => $registro, 'xp' => $xpOtorgado, 'gamificacion' => $gamificacion], 'Vaso de agua registrado.');
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        respond(false, null, 'No se pudo registrar el agua.', 500);
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {

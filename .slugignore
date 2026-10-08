@@ -1,0 +1,5 @@
+# Heroku: archivos que no hacen falta en el dyno (no afectan al repositorio ni a GitHub).
+/tests
+/documentacion
+/*.py
+/*.md

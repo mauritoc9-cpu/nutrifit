@@ -1,0 +1,252 @@
+{
+  "NutriFit_Documentacion.docx": {
+    "tipo": "DOCX",
+    "descripción": "Documento de tesis completo",
+    "secciones": [
+      [
+        "Carátula",
+        "Título, autor, año"
+      ],
+      [
+        "Fundamentación",
+        "Necesidades tecnológicas"
+      ],
+      [
+        "Problemática",
+        "Contexto + solución existente"
+      ],
+      [
+        "Solución Propuesta",
+        "¿Qué es NutriFit?"
+      ],
+      [
+        "Objetivos",
+        "Generales y específicos"
+      ],
+      [
+        "Usuarios Destinatarios",
+        "Perfiles"
+      ],
+      [
+        "Tecnologías",
+        "Stack técnico"
+      ],
+      [
+        "Arquitectura",
+        "Capas y flujo"
+      ],
+      [
+        "Base de Datos",
+        "Esquema relacional"
+      ],
+      [
+        "Funcionalidades",
+        "Por módulo"
+      ],
+      [
+        "CRUD",
+        "Operaciones"
+      ],
+      [
+        "Autenticación & Seguridad",
+        "Protecciones"
+      ],
+      [
+        "Estadísticas & Visualización",
+        "Chart.js"
+      ],
+      [
+        "Exportación",
+        "PDF/CSV"
+      ],
+      [
+        "Backlog & Estado",
+        "43 HU, 40 completadas"
+      ],
+      [
+        "Mejoras Futuras",
+        "Roadmap"
+      ]
+    ],
+    "acciones": [
+      "Actualizar año: 2026",
+      "Actualizar estado: 40/43 HU completadas",
+      "Añadir: QR Social",
+      "Actualizar: Gamificación con Tier Social",
+      "Verificar: Chart.js funcional"
+    ]
+  },
+  "NutriFit_Guion_Exposicion.docx": {
+    "tipo": "DOCX",
+    "descripción": "Guion para exposición de tesis",
+    "secciones": [
+      [
+        "[1] PORTADA",
+        "30 seg"
+      ],
+      [
+        "[2] PROBLEMA",
+        "1.5 min"
+      ],
+      [
+        "[3] SOLUCIÓN",
+        "1 min"
+      ],
+      [
+        "[4] FUNCIONALIDADES",
+        "2 min"
+      ],
+      [
+        "[5] TECNOLOGÍAS",
+        "1 min"
+      ],
+      [
+        "[6] BASE DE DATOS & SEGURIDAD",
+        "1.5 min"
+      ],
+      [
+        "[7] IA & ESCANEO",
+        "1.5 min"
+      ],
+      [
+        "[8] MI PROGRESO & GRÁFICOS",
+        "1.5 min"
+      ],
+      [
+        "[9] QR DE RUTINAS",
+        "1 min"
+      ],
+      [
+        "[10] QR SOCIAL",
+        "1.5 min"
+      ],
+      [
+        "[11] EXPLORAR & MAPAS",
+        "1 min"
+      ],
+      [
+        "[12] GAMIFICACIÓN",
+        "1.5 min"
+      ],
+      [
+        "[13] RESPONSIVE",
+        "45 seg"
+      ],
+      [
+        "[14] BACKLOG & DESARROLLO",
+        "1 min"
+      ],
+      [
+        "DEMO EN VIVO",
+        "5-8 min"
+      ],
+      [
+        "CIERRE",
+        "1 min"
+      ]
+    ],
+    "acciones": [
+      "Actualizar contenido de cada sección",
+      "Mantener tiempos sugeridos",
+      "Añadir: [10] QR SOCIAL",
+      "Actualizar: DEMO 6 para QR Social"
+    ]
+  },
+  "NutriFit_Presentacion_Exposicion.pptx": {
+    "tipo": "PPTX",
+    "descripción": "Presentación para exposición (15-18 diapositivas)",
+    "diapositivas_actuales": 8,
+    "diapositivas_requeridas": "15-18",
+    "secciones": [
+      [
+        "1",
+        "PORTADA"
+      ],
+      [
+        "2",
+        "PROBLEMA"
+      ],
+      [
+        "3",
+        "SOLUCIÓN"
+      ],
+      [
+        "4",
+        "FUNCIONALIDADES PRINCIPALES"
+      ],
+      [
+        "5",
+        "TECNOLOGÍAS"
+      ],
+      [
+        "6",
+        "ARQUITECTURA"
+      ],
+      [
+        "7",
+        "BASE DE DATOS & SEGURIDAD"
+      ],
+      [
+        "8",
+        "IA & ESCANEO"
+      ],
+      [
+        "9",
+        "MI PROGRESO & GRÁFICOS"
+      ],
+      [
+        "10",
+        "EXPORTACIÓN"
+      ],
+      [
+        "11",
+        "QR DE RUTINAS"
+      ],
+      [
+        "12",
+        "QR SOCIAL (NUEVO)"
+      ],
+      [
+        "13",
+        "EXPLORAR & MAPAS"
+      ],
+      [
+        "14",
+        "GAMIFICACIÓN"
+      ],
+      [
+        "15",
+        "RESPONSIVE"
+      ],
+      [
+        "16",
+        "BACKLOG & DESARROLLO"
+      ],
+      [
+        "17",
+        "DEMO EN VIVO"
+      ],
+      [
+        "18",
+        "CIERRE & MEJORAS FUTURAS"
+      ]
+    ],
+    "capturas_necesarias": [
+      "Home",
+      "Nutrición",
+      "Escaneo IA",
+      "Mi Progreso + Chart.js",
+      "QR de rutina",
+      "QR Social",
+      "Explorar",
+      "Gamificación",
+      "Asistente"
+    ],
+    "acciones": [
+      "EXPANDIR: 8 → 18 diapositivas",
+      "AÑADIR: Capturas de pantalla actuales",
+      "AÑADIR: [12] QR Social con diagrama",
+      "VERIFICAR: Coherencia con guion"
+    ]
+  }
+}

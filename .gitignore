@@ -23,3 +23,6 @@ npm-debug.log*
 # Editor / IDE
 .vscode/
 .idea/
+
+# Local restoration sandbox contains private production data.
+/tests/mysql84-restore-data/

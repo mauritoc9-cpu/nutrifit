@@ -9,6 +9,7 @@ $usuarioId = requireAuth();
 
 $db = (new Database())->getConnection();
 $usuarioModel = new Usuario($db);
+(new SistemaXP($db))->actualizarRachaVigente($usuarioId);
 $usuario = $usuarioModel->obtenerPorId($usuarioId);
 
 if (!$usuario) {
@@ -26,7 +27,7 @@ $usuario['onboarding_completo'] = (bool) $stmtPerfil->fetch();
 $stmtEquipo = $db->prepare(
     'SELECT ti.tipo, ti.nombre FROM inventario_usuario iu
      JOIN tienda_items ti ON ti.id = iu.item_id
-     WHERE iu.usuario_id = :id AND iu.equipado = 1'
+     WHERE iu.usuario_id = :id AND iu.equipado = 1 AND ti.tipo IN ("ropa_avatar", "aura", "marco_perfil", "titulo")'
 );
 $stmtEquipo->execute(['id' => $usuarioId]);
 $usuario['equipados'] = $stmtEquipo->fetchAll(PDO::FETCH_KEY_PAIR); // tipo => nombre

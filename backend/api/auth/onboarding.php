@@ -61,6 +61,13 @@ if (!in_array($genero, $generosValidos, true)
     respond(false, null, 'Alguno de los valores enviados no es válido.', 422);
 }
 
+if ($pesoObjetivo !== null) {
+    $imcObjetivo = $pesoObjetivo / (($altura / 100) ** 2);
+    if ($imcObjetivo < 14 || $imcObjetivo > 45) {
+        respond(false, null, 'El peso objetivo no es coherente con tu altura. Revisá la meta.', 422);
+    }
+}
+
 // El motor metabólico usa 'mejorar_habitos' como ajuste neutro; para la fórmula
 // de Mifflin-St Jeor sólo importan género/edad/peso/altura, no el objetivo.
 $motor = new MotorMetabolico();

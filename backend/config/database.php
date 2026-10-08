@@ -1,4 +1,4 @@
- <?php
+<?php
 
 /**
  * NutriFit — Conexión PDO
@@ -44,6 +44,16 @@ class Database
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
             ]);
+
+            // Alinea la sesión de MySQL con la zona horaria de PHP (fijada en
+            // bootstrap.php vía APP_TIMEZONE). Se pasa el OFFSET calculado por
+            // PHP desde la zona IANA — no un número hardcodeado: si la zona
+            // cambiara su offset (p. ej. reintroducción de horario de verano),
+            // PHP lo refleja y MySQL lo sigue. Usar el offset en vez del
+            // nombre de zona evita depender de las tablas de timezone de MySQL,
+            // que en XAMPP/MariaDB no suelen estar cargadas.
+            $offset = (new DateTime('now'))->format('P'); // ej. "-03:00"
+            $this->conn->exec("SET time_zone = '{$offset}'");
 
             return $this->conn;
 

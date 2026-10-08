@@ -2,7 +2,7 @@
  * NutriFit — Capa de comunicación con la API PHP.
  * Ajusta API_BASE si tu proyecto vive en otra ruta dentro de XAMPP/htdocs.
  */
-const API_BASE = '/backend/api';
+const API_BASE = new URL('../../backend/api', document.currentScript.src).pathname.replace(/\/$/, '');
 
 async function apiRequest(path, { method = 'GET', body = null } = {}) {
   const options = {
@@ -23,12 +23,18 @@ async function apiRequest(path, { method = 'GET', body = null } = {}) {
     return { success: false, message: 'No se pudo conectar con el servidor.', data: null };
   }
 
-  const json = await response.json().catch(() => ({
-    success: false,
-    message: 'Respuesta inválida del servidor.',
-    data: null,
-  }));
+  let json;
+  try {
+    json = await response.json();
+    if (!json || typeof json.success !== 'boolean') throw new Error('Formato JSON inválido');
+  } catch {
+    return { success: false, message: `Respuesta inválida del servidor (HTTP ${response.status}, ${path}).`, data: null };
+  }
 
+  if (json.success && json.data?.gamificacion && typeof handleGamificationResponse === 'function') {
+    handleGamificationResponse(json.data.gamificacion, json.data.xp);
+  }
+  if (json.success && json.data?.estado && typeof aplicarEstadoGamificacion === 'function') aplicarEstadoGamificacion(json.data.estado);
   return json;
 }
 
@@ -76,6 +82,10 @@ const Api = {
   rutinaRecomendada: () => apiRequest('/entrenamiento/rutina_recomendada.php'),
   completarEntrenamiento: (rutinaId) =>
     apiRequest('/entrenamiento/completar_entrenamiento.php', { method: 'POST', body: { rutina_id: rutinaId } }),
+  completarEjercicio: (ejercicioId, rutinaId) =>
+    apiRequest('/entrenamiento/completar_ejercicio.php', { method: 'POST', body: { ejercicio_id: ejercicioId, rutina_id: rutinaId } }),
+  descompletarEjercicio: (ejercicioId) =>
+    apiRequest('/entrenamiento/completar_ejercicio.php', { method: 'DELETE', body: { ejercicio_id: ejercicioId } }),
 
   progresoPesoGet: () => apiRequest('/entrenamiento/progreso_peso.php'),
   progresoPesoPost: (peso) =>
@@ -112,7 +122,9 @@ const Api = {
   receta: (momento, regenerar) =>
     apiRequest(`/nutricion/receta.php?momento=${encodeURIComponent(momento || '')}${regenerar ? '&regenerar=1' : ''}`),
 
-  ranking: () => apiRequest('/gamificacion/ranking.php'),
+  ranking: (scope) => apiRequest(`/gamificacion/ranking.php${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`),
+  logrosGet: () => apiRequest('/gamificacion/logros.php'),
+  retosGet: () => apiRequest('/gamificacion/retos.php'),
   amigosGet: () => apiRequest('/gamificacion/amigos.php'),
   amigosAgregar: (email) =>
     apiRequest('/gamificacion/amigos.php', { method: 'POST', body: { accion: 'agregar', email } }),
@@ -135,4 +147,6 @@ const Api = {
     apiRequest(`/nutricion/favoritos.php?id=${encodeURIComponent(favoritoId)}`, { method: 'PUT', body: payload }),
   favoritosEliminar: (favoritoId) =>
     apiRequest(`/nutricion/favoritos.php?id=${encodeURIComponent(favoritoId)}`, { method: 'DELETE' }),
+  favoritosMarcarUso: (favoritoId) =>
+    apiRequest(`/nutricion/favoritos.php?id=${encodeURIComponent(favoritoId)}`, { method: 'PATCH' }),
 };

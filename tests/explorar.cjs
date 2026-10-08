@@ -1,0 +1,26 @@
+const fs=require('node:fs');const vm=require('node:vm');const assert=require('node:assert/strict');const cp=require('node:child_process');const path=require('node:path');
+const root=path.resolve(__dirname,'..');let checks=0;function check(name,ok){assert.ok(ok,name);checks++;console.log('PASS '+name);}
+const src=fs.readFileSync(root+'/frontend/js/explorar.js','utf8');
+class Element{constructor(){this.children=[];this.dataset={};this.classList={contains:()=>true,toggle(){}};}append(...e){this.children.push(...e);}replaceChildren(){this.children=[];}setAttribute(k,v){this[k]=v;}scrollIntoView(){}get textContent(){return (this._text||'')+this.children.map(c=>c.textContent).join('');}set textContent(v){this._text=v;}querySelectorAll(){return [];}}
+const elements=new Map();const el=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
+let geoSuccess,geoError,body,responder=async()=>({lugares:[],centro:{lat:-34.474,lon:-58.526}});
+const ctx={document:{getElementById:el,createElement:()=>new Element(),querySelectorAll:()=>[],querySelector:()=>null},navigator:{geolocation:{getCurrentPosition:(s,e)=>{geoSuccess=s;geoError=e;}}},window:{isSecureContext:true},API_BASE:'/api',Icon:()=>'<svg></svg>',AbortController,setTimeout,clearTimeout,fetch:async(url,opts)=>{body=JSON.parse(opts.body);return {json:async()=>({success:true,data:await responder(body)})};}};
+vm.createContext(ctx);vm.runInContext(src.replace('return {render,salir};','return {render,salir,ubicar,buscarZona,buscarCercanos,pintar,seleccionar,ejecutar,estadoTest:()=>({locationState,centro,busy}),setCategoria:x=>{categoria=x;pintar();}};'),ctx);
+const tick=()=>new Promise(r=>setTimeout(r,5));
+async function main(){const x=vm.runInContext('Explorar',ctx);
+check('sin permiso automático',x.estadoTest().locationState==='no_solicitada'&&!geoSuccess);
+x.ubicar();check('solicitando',x.estadoTest().locationState==='solicitando');geoError({code:1});check('denegada con alternativa manual',el('explorar-location-state').textContent.includes('localidad')&&!el('explorar-ubicacion').disabled);
+x.ubicar();geoError({code:2});check('no disponible',x.estadoTest().locationState==='no_disponible');x.ubicar();geoError({code:3});check('timeout controlado',x.estadoTest().locationState==='error');
+x.ubicar();geoSuccess({coords:{latitude:-34.474123456,longitude:-58.526123456}});await tick();check('permiso concedido y GPS aproximado',x.estadoTest().locationState==='permitida'&&body.lat===-34.474&&body.lon===-58.526);
+const places=[{id:'node/1',nombre:'<img src=x onerror=bad>',categoria:'gimnasios',lat:-34.474,lon:-58.526,distancia_m:100,direccion:'<script>bad</script>'},{id:'node/2',nombre:'Comida',categoria:'comida',lat:-34.47,lon:-58.52,distancia_m:200},{id:'node/3',nombre:'Suplementos',categoria:'suplementos',lat:-34.47,lon:-58.52,distancia_m:300}];
+responder=async()=>({lugares:places,centro:{lat:-34.474,lon:-58.526}});await x.buscarCercanos();check('texto externo sin innerHTML',el('explorar-resultados').children[0].children[0].textContent==='<img src=x onerror=bad>'&&!el('explorar-resultados').children[0].children[0].innerHTML);
+for(const cat of ['comida','suplementos','todos','gimnasios']){x.setCategoria(cat);check('filtro '+cat,el('explorar-resultados').children.length===(cat==='todos'?3:1));}
+const actions=el('explorar-resultados').children[0].children.at(-1);check('ruta segura real',actions.children[1].href==='https://www.google.com/maps/dir/?api=1&destination=-34.474%2C-58.526'&&actions.children[1].rel==='noopener noreferrer');
+responder=async()=>({lugares:[],centro:{lat:-34.474,lon:-58.526}});await x.buscarCercanos();check('sin resultados',el('explorar-estado').textContent.includes('No encontramos'));
+ctx.fetch=async()=>{throw Error('Error de red');};await x.buscarCercanos();check('red sin loader infinito',!x.estadoTest().busy&&!el('explorar-reintentar').hidden);
+let resolveOld;ctx.fetch=async(url,o)=>{const b=JSON.parse(o.body);return {json:async()=>({success:true,data:b.accion==='old'?await new Promise(r=>resolveOld=r):{value:'new'}})}};
+let output=[];const old=x.ejecutar({accion:'old'},d=>output.push(d.value));await tick();await x.ejecutar({accion:'new'},d=>output.push(d.value));resolveOld({value:'old'});await old;check('ignora respuesta obsoleta',output.join(',')==='new');
+x.ubicar();x.salir();geoSuccess({coords:{latitude:1,longitude:1}});check('ubicación tardía ignorada al salir',x.estadoTest().centro.lat===-34.474);
+const p=cp.spawnSync('C:/xampp/php/php.exe',['-r',"require 'backend/config/env.php';require 'backend/classes/ExplorarService.php';$r=[];foreach([999,'nan',null] as $v){try{ExplorarService::coordenada($v,90);$r[]=false;}catch(InvalidArgumentException $e){$r[]=true;}}$r[]=ExplorarService::coordenada(-34.474123456,90)===-34.474;$r[]=ExplorarService::normalizar(['elements'=>[['type'=>'node','id'=>1,'lat'=>-34.474,'lon'=>-58.526,'tags'=>['name'=>'Real','leisure'=>'fitness_centre']]]],-34.474,-58.526,'gimnasios')[0]['nombre']==='Real';echo json_encode($r);"],{cwd:root,encoding:'utf8'});check('backend valida y normaliza',p.status===0&&JSON.parse(p.stdout).every(Boolean));
+console.log('TOTAL '+checks+' passed');}
+main().catch(e=>{console.error(e);process.exitCode=1;});

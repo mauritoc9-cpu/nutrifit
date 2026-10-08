@@ -50,7 +50,7 @@ class Usuario
             return null;
         }
 
-        unset($usuario['password'], $usuario['reset_token'], $usuario['reset_token_expira']);
+        unset($usuario['password'], $usuario['reset_token'], $usuario['reset_token_expira'], $usuario['reset_token_hash']);
         return $usuario;
     }
 
@@ -64,7 +64,7 @@ class Usuario
             return null;
         }
 
-        unset($usuario['password'], $usuario['reset_token'], $usuario['reset_token_expira']);
+        unset($usuario['password'], $usuario['reset_token'], $usuario['reset_token_expira'], $usuario['reset_token_hash']);
         return $usuario;
     }
 }

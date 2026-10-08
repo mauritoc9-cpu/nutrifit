@@ -41,16 +41,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             respond(false, null, 'No puedes agregarte a ti mismo.', 422);
         }
 
-        $db->prepare(
-            'INSERT IGNORE INTO amigos_ranking (usuario_id, amigo_id, estado) VALUES (:uid, :aid, "pendiente")'
-        )->execute(['uid' => $usuarioId, 'aid' => $amigo['id']]);
+        try {
+            $db->prepare('INSERT INTO amigos_ranking (usuario_id, amigo_id, estado) VALUES (:uid, :aid, "pendiente")')->execute(['uid' => $usuarioId, 'aid' => $amigo['id']]);
+        } catch (PDOException $e) {
+            if ($e->getCode() === '23000') respond(false, null, 'Ya existe una amistad o solicitud entre estos usuarios.', 409);
+            respond(false, null, 'No se pudo enviar la solicitud.', 500);
+        }
+
+        respond(true, null, 'Solicitud de amistad enviada.', 201);
+    }
+
+    if ($accion === 'agregar-por-qr') {
+        $amigoId = (int) ($body['usuario_id'] ?? 0);
+
+        if ($amigoId <= 0) {
+            respond(false, null, 'Usuario inválido.', 422);
+        }
+        if ($amigoId === $usuarioId) {
+            respond(false, null, 'No puedes agregarte a ti mismo.', 422);
+        }
+
+        $stmtVerificar = $db->prepare('SELECT id FROM usuarios WHERE id = :id');
+        $stmtVerificar->execute(['id' => $amigoId]);
+        if (!$stmtVerificar->fetch()) {
+            respond(false, null, 'Usuario no encontrado.', 404);
+        }
+
+        try {
+            $db->prepare('INSERT INTO amigos_ranking (usuario_id, amigo_id, estado) VALUES (:uid, :aid, "pendiente")')->execute(['uid' => $usuarioId, 'aid' => $amigoId]);
+        } catch (PDOException $e) {
+            if ($e->getCode() === '23000') respond(false, null, 'Ya existe una amistad o solicitud entre estos usuarios.', 409);
+            respond(false, null, 'No se pudo enviar la solicitud.', 500);
+        }
 
         respond(true, null, 'Solicitud de amistad enviada.', 201);
     }
 
     if ($accion === 'aceptar') {
         $relacionId = (int) ($body['relacion_id'] ?? 0);
-        $stmt = $db->prepare('UPDATE amigos_ranking SET estado = "aceptado" WHERE id = :id AND amigo_id = :uid');
+        $stmt = $db->prepare('UPDATE amigos_ranking SET estado = "aceptado" WHERE id = :id AND amigo_id = :uid AND estado = "pendiente"');
         $stmt->execute(['id' => $relacionId, 'uid' => $usuarioId]);
         if ($stmt->rowCount() === 0) {
             respond(false, null, 'No se encontró esa solicitud.', 404);

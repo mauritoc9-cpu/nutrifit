@@ -128,6 +128,22 @@ elseif ($metodo === 'PUT') {
 
     respond(true, ['mensaje' => 'Favorito actualizado.']);
 }
+elseif ($metodo === 'PATCH') {
+    // Marca el favorito como usado (incrementa veces_usado, actualiza ultima_usado)
+    // sin tocar sus valores nutricionales — se usa al agregarlo al día.
+    $favoritoId = (int) ($_GET['id'] ?? 0);
+    if (!$favoritoId) {
+        respond(false, null, 'ID de favorito requerido.', 400);
+    }
+
+    $favorito = $repo->obtenerPorId($favoritoId, $usuarioId);
+    if (!$favorito) {
+        respond(false, null, 'Favorito no encontrado.', 404);
+    }
+
+    $repo->registrarUso($favoritoId, $usuarioId);
+    respond(true, ['mensaje' => 'Uso registrado.']);
+}
 elseif ($metodo === 'DELETE') {
     // Eliminar favorito
     $favoritoId = (int) ($_GET['id'] ?? 0);

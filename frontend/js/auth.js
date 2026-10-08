@@ -250,6 +250,9 @@ function validarBiometria({ edad, peso, altura, pesoObjetivo }) {
   if (pesoObjetivo !== '' && pesoObjetivo != null && pesoObjetivo !== undefined) {
     const po = parseFloat(pesoObjetivo);
     if (!Number.isFinite(po) || po <= 0 || po > 400) errores.pesoObjetivo = 'Ingresá un peso objetivo válido (hasta 400 kg).';
+    else if (Number.isFinite(a) && a > 0 && (calcularIMC(po, a) < 14 || calcularIMC(po, a) > 45)) {
+      errores.pesoObjetivo = 'El peso objetivo no es coherente con tu altura. Revisá la meta.';
+    }
   }
   return errores;
 }
@@ -480,7 +483,7 @@ async function bootApp() {
 
   showScreen('screen-app');
   renderUserChip(sesion.data);
-  await loadView('progreso');
+  await loadView('inicio');
 
   actualizarBotonRecordatorios();
   if (!window.NutriFitRecordatoriosIniciados) {

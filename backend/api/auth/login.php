@@ -30,7 +30,8 @@ $stmt = $db->prepare('SELECT id FROM perfiles_biometricos WHERE usuario_id = :id
 $stmt->execute(['id' => $usuario['id']]);
 $onboardingCompleto = (bool) $stmt->fetch();
 
-$_SESSION['usuario_id'] = $usuario['id'];
+session_regenerate_id(true);
+    $_SESSION['usuario_id'] = $usuario['id'];
 $_SESSION['usuario_nombre'] = $usuario['nombre'];
 
 respond(true, [

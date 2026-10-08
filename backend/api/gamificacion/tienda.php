@@ -2,6 +2,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../config/bootstrap.php';
+require_once __DIR__ . '/../../classes/SistemaXP.php';
+require_once __DIR__ . '/../../classes/gamificacion/GamificacionService.php';
 
 $usuarioId = requireAuth();
 $db = (new Database())->getConnection();
@@ -15,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     foreach ($items as &$item) {
         $item['poseido'] = array_key_exists($item['id'], $inventario);
-        $item['equipado'] = (bool) ($inventario[$item['id']] ?? false);
+        $item['equipado'] = in_array($item['tipo'], ['ropa_avatar', 'aura', 'marco_perfil', 'titulo'], true) && (bool) ($inventario[$item['id']] ?? false);
     }
 
     respond(true, $items);
@@ -38,39 +40,45 @@ if ($accion === 'canjear') {
         respond(false, null, 'Ítem no encontrado.', 404);
     }
 
-    $stmtUsuario = $db->prepare('SELECT nivel, nutri_coins, xp_total FROM usuarios WHERE id = :uid');
-    $stmtUsuario->execute(['uid' => $usuarioId]);
-    $usuario = $stmtUsuario->fetch();
-
-    if ((int) $usuario['nivel'] < (int) $item['nivel_requerido']) {
-        respond(false, null, "Necesitas nivel {$item['nivel_requerido']} para desbloquear este ítem.", 403);
-    }
-    if ((int) $usuario['nutri_coins'] < (int) $item['costo_coins']) {
-        respond(false, null, 'No tienes suficientes NutriCoins.', 403);
-    }
-    if ((int) $usuario['xp_total'] < (int) $item['costo_xp']) {
-        respond(false, null, 'No tienes suficiente XP para este ítem.', 403);
-    }
-
     $db->beginTransaction();
     try {
-        $db->prepare('UPDATE usuarios SET nutri_coins = nutri_coins - :coins WHERE id = :uid')
-           ->execute(['coins' => $item['costo_coins'], 'uid' => $usuarioId]);
-
-        $db->prepare(
-            'INSERT IGNORE INTO inventario_usuario (usuario_id, item_id, equipado) VALUES (:uid, :iid, 0)'
-        )->execute(['uid' => $usuarioId, 'iid' => $itemId]);
-
+        $stmtUsuario = $db->prepare('SELECT nivel, nutri_coins, xp_total FROM usuarios WHERE id = :uid FOR UPDATE');
+        $stmtUsuario->execute(['uid' => $usuarioId]);
+        $usuario = $stmtUsuario->fetch();
+        $stmtPoseido = $db->prepare('SELECT item_id FROM inventario_usuario WHERE usuario_id = :uid AND item_id = :iid');
+        $stmtPoseido->execute(['uid' => $usuarioId, 'iid' => $itemId]);
+        if ($stmtPoseido->fetch()) { $db->commit(); respond(true, ['resultado' => 'ya_poseido', 'estado' => (new GamificacionService($db))->estado($usuarioId)], 'Ya posees este ítem. No se realizó ningún cobro.'); }
+        foreach ([['nivel', 'nivel_requerido', 'nivel_insuficiente', 'Necesitás un nivel mayor para este objeto.'], ['nutri_coins', 'costo_coins', 'coins_insuficientes', 'No tenés suficientes NutriCoins.'], ['xp_total', 'costo_xp', 'xp_insuficiente', 'No tenés suficiente XP.']] as [$saldo, $costo, $codigo, $mensaje]) {
+            if ((int) $usuario[$saldo] < (int) $item[$costo]) { $db->rollBack(); respond(false, ['codigo' => $codigo], $mensaje, 403); }
+        }
+        $nuevoXpTotal = (int) $usuario['xp_total'] - (int) $item['costo_xp'];
+        $nuevoNivel = (new SistemaXP($db))->calcularNivelDesdeXP($nuevoXpTotal);
+        $db->prepare('UPDATE usuarios SET nutri_coins = nutri_coins - :coins, xp_total = :xp, nivel = :nivel WHERE id = :uid')->execute(['coins' => $item['costo_coins'], 'xp' => $nuevoXpTotal, 'nivel' => $nuevoNivel, 'uid' => $usuarioId]);
+        $db->prepare('INSERT INTO inventario_usuario (usuario_id, item_id, equipado) VALUES (:uid, :iid, 0)')->execute(['uid' => $usuarioId, 'iid' => $itemId]);
         $db->commit();
     } catch (Throwable $e) {
-        $db->rollBack();
+        if ($db->inTransaction()) $db->rollBack();
         respond(false, null, 'No se pudo completar el canje.', 500);
     }
 
-    respond(true, null, 'Ítem canjeado correctamente.', 201);
+    respond(true, ['resultado' => 'comprado', 'estado' => (new GamificacionService($db))->estado($usuarioId)], 'Objeto comprado. Ya está en tu colección.', 201);
 }
 
 if ($accion === 'equipar') {
+    // Tipos que producen un efecto visual REAL hoy (ver frontend):
+    //   ropa_avatar  → tiñe el modelo 3D
+    //   aura         → glow CSS alrededor del avatar
+    //   marco_perfil → marco CSS del avatar
+    //   titulo       → título mostrado bajo el nombre
+    // Se excluyen a propósito:
+    //   cupon            → no es cosmético del avatar (va a Beneficios, a futuro)
+    //   accesorio_avatar → requiere geometría 3D que el GLB actual (malla
+    //                      única) no tiene; pendiente hasta tener ese asset.
+    $equipables = ['ropa_avatar', 'aura', 'marco_perfil', 'titulo'];
+
+    $db->beginTransaction();
+    $lock = $db->prepare('SELECT id FROM usuarios WHERE id = :uid FOR UPDATE');
+    $lock->execute(['uid' => $usuarioId]);
     $stmt = $db->prepare(
         'SELECT ti.tipo, iu.equipado FROM inventario_usuario iu
          JOIN tienda_items ti ON ti.id = iu.item_id
@@ -80,10 +88,14 @@ if ($accion === 'equipar') {
     $poseido = $stmt->fetch();
 
     if (!$poseido) {
+        $db->rollBack();
         respond(false, null, 'No posees este ítem.', 404);
     }
+    if (!in_array($poseido['tipo'], $equipables, true)) {
+        $db->rollBack();
+        respond(false, ['codigo' => 'no_equipable'], $poseido['tipo'] === 'accesorio_avatar' ? 'Accesorios 3D: próximamente. Este objeto no se puede equipar.' : 'Este objeto no se puede equipar en el avatar.', 422);
+    }
 
-    $db->beginTransaction();
     try {
         if ((bool) $poseido['equipado']) {
             // Ya estaba equipado: lo desequipa.
@@ -107,7 +119,7 @@ if ($accion === 'equipar') {
         respond(false, null, 'No se pudo actualizar el equipamiento.', 500);
     }
 
-    respond(true, null, 'Equipamiento actualizado.');
+    respond(true, ['resultado' => $poseido['equipado'] ? 'desequipado' : 'equipado', 'estado' => (new GamificacionService($db))->estado($usuarioId)], $poseido['equipado'] ? 'Objeto desequipado.' : 'Objeto equipado.');
 }
 
 respond(false, null, 'Acción no reconocida.', 422);

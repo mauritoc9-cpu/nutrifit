@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../classes/RegistroActividadRepository.php';
 require_once __DIR__ . '/../../classes/CalculadoraActividad.php';
 require_once __DIR__ . '/../../classes/CriteriosActividadXP.php';
 require_once __DIR__ . '/../../classes/SistemaXP.php';
+require_once __DIR__ . '/../../classes/gamificacion/GamificacionService.php';
 
 /**
  * Registra UNA sesión de actividad física (caminata/carrera/ciclismo hoy;
@@ -48,7 +49,8 @@ if ($duracionSegundos <= 0 || $duracionSegundos > 86400) {
 }
 
 $fecha = (string) ($body['fecha'] ?? date('Y-m-d'));
-if (!DateTime::createFromFormat('Y-m-d', $fecha)) {
+$fechaParseada = DateTimeImmutable::createFromFormat('!Y-m-d', $fecha);
+if (!$fechaParseada || $fechaParseada->format('Y-m-d') !== $fecha || $fecha > date('Y-m-d')) {
     respond(false, null, 'Formato de fecha inválido. Usá YYYY-MM-DD.', 422);
 }
 
@@ -75,6 +77,12 @@ if ($fuenteRegistroId !== '') {
 
 $distanciaMetros = isset($body['distancia_metros']) && is_numeric($body['distancia_metros']) ? (float) $body['distancia_metros'] : null;
 $pasos = ((bool) $tipo['usa_pasos']) && isset($body['pasos']) && is_numeric($body['pasos']) ? max(0, (int) $body['pasos']) : null;
+
+if (($distanciaMetros !== null && (!is_finite($distanciaMetros) || $distanciaMetros < 0 || $distanciaMetros > 1000000)) || ($pasos !== null && $pasos > 100000)) respond(false, null, 'Distancia o pasos inválidos.', 422);
+if (isset($body['hora_inicio'])) {
+    $hora = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', (string) $body['hora_inicio']);
+    if (!$hora || $hora->format('Y-m-d H:i:s') !== $body['hora_inicio'] || $hora->format('Y-m-d') !== $fecha || $hora > new DateTimeImmutable()) respond(false, null, 'Hora de inicio inválida.', 422);
+}
 
 // Si el tipo usa pasos y no vino distancia pero sí pasos, se estima la
 // distancia — igual criterio que ya usaba `pasos.php`. Nunca se inventan
@@ -103,6 +111,15 @@ $resumenAntes = $repo->resumenDia($usuarioId, $fecha);
 $yaHabiaCumplidoMetaPasos = $resumenAntes['pasos'] >= $metaPasos;
 
 try {
+$db->beginTransaction();
+try {
+    $lock = $db->prepare('SELECT id FROM usuarios WHERE id = :uid FOR UPDATE');
+    $lock->execute(['uid' => $usuarioId]);
+    // Relee tras el bloqueo: dos sesiones diferentes no pueden cruzar dos veces la meta.
+    $yaHabiaCumplidoMetaPasos = $repo->resumenDia($usuarioId, $fecha)['pasos'] >= $metaPasos;
+    if ($fuenteRegistroId !== '' && ($existente = $repo->buscarPorFuenteExterna($usuarioId, $fuente, $fuenteRegistroId)) !== null) {
+        $db->commit(); respond(true, ['registro' => $existente, 'xp' => null, 'ya_existia' => true], 'Esta sesión ya estaba registrada.');
+    }
     $registroId = $repo->insertarSesion([
         'usuario_id' => $usuarioId,
         'tipo_actividad_id' => $tipo['id'],
@@ -118,6 +135,7 @@ try {
         'fuente_registro_id' => $fuenteRegistroId !== '' ? $fuenteRegistroId : null,
     ]);
 } catch (PDOException $e) {
+    if ($db->inTransaction()) $db->rollBack();
     // Carrera contra otro request con el mismo id externo (doble tap muy
     // rápido) — la UNIQUE key de la tabla es la última línea de defensa.
     if ((int) $e->getCode() === 23000 && $fuenteRegistroId !== '') {
@@ -138,26 +156,30 @@ $xpResultado = null;
 // chicas no sirva para juntar XP de más).
 $sesionesConXPHoy = $repo->contarSesionesConXPHoy($usuarioId, $fecha);
 if (
-    CriteriosActividadXP::esSesionValida($tipo['clave'], $duracionSegundos, $distanciaMetros)
+    $fecha === date('Y-m-d')
+    && CriteriosActividadXP::esSesionValida($tipo['clave'], $duracionSegundos, $distanciaMetros)
     && $sesionesConXPHoy < CriteriosActividadXP::MAX_SESIONES_XP_POR_DIA
 ) {
-    $xpResultado = $xpSistema->otorgarXP($usuarioId, SistemaXP::XP_ACTIVIDAD_SESION);
-    $repo->marcarXPOtorgado($registroId);
+    $xpResultado = $xpSistema->otorgarXPConLimite($usuarioId, SistemaXP::XP_ACTIVIDAD_SESION, 'actividad', CriteriosActividadXP::MAX_SESIONES_XP_POR_DIA);
+    if ($xpResultado !== null) $repo->marcarXPOtorgado($registroId);
 }
 
 // XP #2: meta diaria de pasos — solo si esta sesión aporta pasos y recién
 // ahora se cruza la meta (no se había cruzado antes hoy).
-if ($pasos !== null) {
+if ($pasos !== null && $fecha === date('Y-m-d')) {
     $resumenDespues = $repo->resumenDia($usuarioId, $fecha);
     if ($resumenDespues['pasos'] >= $metaPasos && !$yaHabiaCumplidoMetaPasos) {
-        $xpPasos = $xpSistema->otorgarXP($usuarioId, SistemaXP::XP_PASOS);
+        $xpPasos = $xpSistema->otorgarXPConLimite($usuarioId, SistemaXP::XP_PASOS, 'pasos', 1);
         // Si también hubo XP de sesión en esta misma llamada, se informan
         // los dos por separado en vez de perder uno.
         $xpResultado = $xpResultado === null ? $xpPasos : ['sesion' => $xpResultado, 'meta_pasos' => $xpPasos];
     }
 }
 
+$gamificacion = (new GamificacionService($db))->reconciliar($usuarioId, $xpResultado);
+$db->commit();
 respond(true, [
+    'gamificacion' => $gamificacion,
     'registro' => [
         'id' => $registroId,
         'tipo' => $tipo['clave'],
@@ -172,3 +194,8 @@ respond(true, [
     ],
     'xp' => $xpResultado,
 ], 'Actividad registrada.', 201);
+
+} catch (Throwable $e) {
+    if ($db->inTransaction()) $db->rollBack();
+    respond(false, null, 'No se pudo registrar la actividad.', 500);
+}

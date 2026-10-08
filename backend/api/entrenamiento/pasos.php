@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../config/bootstrap.php';
 require_once __DIR__ . '/../../classes/RegistroActividadRepository.php';
 require_once __DIR__ . '/../../classes/CalculadoraActividad.php';
 require_once __DIR__ . '/../../classes/SistemaXP.php';
+require_once __DIR__ . '/../../classes/gamificacion/GamificacionService.php';
 
 /**
  * Wrapper de compatibilidad: el frontend actual (pedómetro por
@@ -43,6 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
     $body = getJsonBody();
     $cantidad = (int) ($body['cantidad'] ?? 0);
 
@@ -50,6 +52,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         respond(false, null, 'Cantidad de pasos inválida.', 422);
     }
 
+    $db->beginTransaction();
+    $lock = $db->prepare('SELECT id FROM usuarios WHERE id = :uid FOR UPDATE');
+    $lock->execute(['uid' => $usuarioId]);
     $fecha = date('Y-m-d');
     $metaPasos = $repo->obtenerMetaPasos($usuarioId);
     $antes = resumenPasosCompat($repo, $usuarioId, $fecha);
@@ -70,13 +75,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cumplioMetaAhora = $registro['pasos'] >= $metaPasos;
     if ($cumplioMetaAhora && !$yaHabiaCumplidoMeta) {
         $xpSystem = new SistemaXP($db);
-        $xpOtorgado = $xpSystem->otorgarXP($usuarioId, SistemaXP::XP_PASOS);
+        $xpOtorgado = $xpSystem->otorgarXPConLimite($usuarioId, SistemaXP::XP_PASOS, 'pasos', 1);
     }
 
+$gamificacion = (new GamificacionService($db))->reconciliar($usuarioId, $xpOtorgado);
+    $db->commit();
     respond(true, [
+        'gamificacion' => $gamificacion,
         'registro' => $registro,
         'xp' => $xpOtorgado,
     ], 'Pasos registrados.');
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        respond(false, null, 'No se pudieron registrar los pasos.', 500);
+    }
 }
 
 respond(false, null, 'Método no permitido.', 405);

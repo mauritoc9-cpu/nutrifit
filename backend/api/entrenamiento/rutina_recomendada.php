@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../config/bootstrap.php';
 require_once __DIR__ . '/../../classes/personalizacion/ContextoUsuarioRepository.php';
 require_once __DIR__ . '/../../classes/personalizacion/MotorPersonalizacion.php';
 require_once __DIR__ . '/../../classes/entrenamiento/GeneradorRutinasPersonalizadas.php';
+require_once __DIR__ . '/../../classes/entrenamiento/RutinasCompartidasService.php';
 
 /**
  * Rutina recomendada del día.
@@ -23,7 +24,21 @@ require_once __DIR__ . '/../../classes/entrenamiento/GeneradorRutinasPersonaliza
  */
 
 $usuarioId = requireAuth();
+// Los fallos SQL deben conservar HTTP de error y JSON válido. El detalle
+// se registra en PHP para diagnosticar diferencias de esquema en producción.
+set_exception_handler(static function (Throwable $e): void {
+    error_log('NutriFit rutina_recomendada: ' . (string) $e);
+    $schemaError = $e instanceof PDOException
+        && in_array((int) ($e->errorInfo[1] ?? 0), [1054, 1146], true);
+    respond(false, null, $schemaError
+        ? 'No se pudo cargar la rutina: faltan tablas o columnas en la base de datos. Revisá las migraciones de entrenamiento (incluidas 012 y 017).'
+        : 'No se pudo cargar la rutina por un error del servidor. El detalle quedó registrado en el log de PHP.', $schemaError ? 503 : 500);
+});
 $db = (new Database())->getConnection();
+
+// Elección explícita del usuario: la copia QR usa las mismas tablas/endpoints.
+$importada = (new RutinasCompartidasService($db))->actual($usuarioId);
+if ($importada !== null) respond(true, $importada);
 
 $contexto = (new ContextoUsuarioRepository($db))->obtenerConHistorial($usuarioId, 7);
 $plan = (new MotorPersonalizacion())->generar($contexto);
@@ -84,6 +99,14 @@ if ($rutina === null) {
 $stmtHoy = $db->prepare('SELECT id FROM registros_entrenamiento WHERE usuario_id = :uid AND rutina_id = :rid AND fecha = CURDATE()');
 $stmtHoy->execute(['uid' => $usuarioId, 'rid' => $rutina['id']]);
 $rutina['completada_hoy'] = (bool) $stmtHoy->fetch();
+
+// Ejercicios de ESTA rutina marcados individualmente hoy (persistido,
+// independiente de completada_hoy — ver ejercicios_completados).
+$stmtEjCompletados = $db->prepare(
+    'SELECT ejercicio_id FROM ejercicios_completados WHERE usuario_id = :uid AND rutina_id = :rid AND fecha = CURDATE()'
+);
+$stmtEjCompletados->execute(['uid' => $usuarioId, 'rid' => $rutina['id']]);
+$rutina['ejercicios_completados_hoy'] = array_map('intval', $stmtEjCompletados->fetchAll(PDO::FETCH_COLUMN));
 
 // --- Campos nuevos (aditivos) ---
 $rutina['personalizada'] = $personalizada;

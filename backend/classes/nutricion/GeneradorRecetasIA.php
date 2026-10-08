@@ -41,6 +41,25 @@ final class GeneradorRecetasIA
         $this->apiKey = $apiKey !== null && trim($apiKey) !== '' ? trim($apiKey) : null;
     }
 
+    /** Compartido con el chat y registro: nunca usar macros del proveedor. */
+    public static function aporte(array $catalogo, float $gramos, int $precision=2): array
+    {
+        $aporte=[];
+        foreach(['calorias'=>'calorias_por_100g','proteinas'=>'proteinas','carbohidratos'=>'carbohidratos','grasas'=>'grasas'] as $salida=>$columna){
+            $valor=(float)($catalogo[$columna]??-1);
+            if(!is_finite($valor)||$valor<0||!is_finite($gramos)||$gramos<=0)throw new InvalidArgumentException('nutricion_invalida');
+            $aporte[$salida]=round($valor*$gramos/100,$precision);
+        }
+        return $aporte;
+    }
+
+    public static function pasosDeRespaldo(array $nombres): array
+    {
+        return ['Preparate los ingredientes: '.implode(', ',$nombres).'.',
+            'Cociná completamente lo que lo necesite; mantené separados los alimentos crudos y listos para comer.',
+            'Serví todo junto. Revisá cantidades y preparación antes de estimar sus nutrientes.'];
+    }
+
     /**
      * Devuelve una receta lista para mostrar. Siempre responde algo
      * utilizable (IA o fallback determinista).
@@ -275,11 +294,7 @@ PROMPT;
 
         $nombres = array_map(static fn ($e) => mb_strtolower($e['catalogo']['nombre']), $elegidos);
 
-        $pasos = [
-            'Preparate los ingredientes: ' . implode(', ', $nombres) . '.',
-            'Cociná o calentá lo que lo necesite, sin agregar ingredientes fuera de tu plan.',
-            'Serví todo junto y ajustá las cantidades según tu apetito.',
-        ];
+        $pasos = self::pasosDeRespaldo($nombres);
 
         return $this->armarReceta(
             $ctx,
@@ -319,14 +334,7 @@ PROMPT;
 
         foreach ($validados as $v) {
             $c = $v['catalogo'];
-            $factor = $v['gramos'] / 100;
-
-            $aporte = [
-                'calorias' => round($c['calorias_por_100g'] * $factor, 1),
-                'proteinas' => round($c['proteinas'] * $factor, 1),
-                'carbohidratos' => round($c['carbohidratos'] * $factor, 1),
-                'grasas' => round($c['grasas'] * $factor, 1),
-            ];
+            $aporte = self::aporte($c, (float)$v['gramos'], 1);
 
             foreach ($total as $k => $_) {
                 $total[$k] += $aporte[$k];

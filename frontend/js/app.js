@@ -1,10 +1,48 @@
+// Escape al renderizar: conserva los datos originales del usuario.
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[ch]));
+}
+// Argumentos string dentro de atributos onclick: JSON primero, HTML después.
+function htmlJsString(value) { return escapeHtml(JSON.stringify(String(value ?? ''))); }
 /**
  * NutriFit — Lógica de la aplicación principal (SPA de 4 pestañas).
  * DEBUG: v2026-09-16-test-1 (verificar caché)
  */
 
-const VIEWS = ['progreso', 'actividad', 'mi_progreso', 'nutricion', 'escaner', 'ranking', 'mi_perfil'];
+const VIEWS = ['inicio', 'nutricion', 'actividad', 'progreso', 'perfil', 'asistente', 'explorar'];
 let cameraStream = null;
+
+// Estado de tabs en las secciones principales
+let progresoTab = 'estadisticas'; // 'estadisticas' (actividad is now separate)
+let nutricionTab = 'diario'; // 'diario' | 'escaner'
+let perfilTab = 'mi_perfil'; // 'mi_perfil' | 'amigos' | 'ranking' | 'logros' | 'retos' | 'tienda'
+
+// Funciones para cambiar tabs
+function cambiarProgresoTab(tab) {
+  progresoTab = tab;
+  renderProgreso();
+}
+function cambiarNutricionTab(tab) {
+  nutricionTab = tab;
+  renderNutricion();
+}
+function cambiarPerfilTab(tab) {
+  if (['amigos', 'ranking', 'tienda'].includes(tab)) return abrirComunidad();
+  if (tab === 'logros') return abrirModalLogros();
+  if (tab === 'retos') return document.getElementById('perfil-retos')?.scrollIntoView({behavior:'smooth'});
+  return loadView('perfil');
+}
+
+// Zona horaria ÚNICA de la app (debe coincidir con APP_TIMEZONE del backend,
+// ver bootstrap.php). Antes se usaba new Date().toISOString() para "hoy", que
+// devuelve la fecha en UTC: para un usuario en Argentina, entre las 21:00 y
+// medianoche eso ya marcaba el día siguiente y el dashboard/diario quedaba
+// desfasado respecto a CURDATE() del backend. Estos helpers calculan la fecha
+// de calendario en la zona de la app sin importar la zona del dispositivo.
+const APP_TZ = 'America/Argentina/Buenos_Aires';
+const _fmtFechaApp = new Intl.DateTimeFormat('en-CA', { timeZone: APP_TZ }); // en-CA → YYYY-MM-DD
+/** HOY en la zona de la app, como "YYYY-MM-DD". */
+function fechaHoyApp() { return _fmtFechaApp.format(new Date()); }
 
 // =====================================================================
 // Recordatorios (notificaciones del navegador mientras la app está abierta)
@@ -47,7 +85,7 @@ function actualizarBotonRecordatorios() {
 }
 
 function logRecordatoriosDeHoy() {
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = fechaHoyApp();
   const guardado = JSON.parse(localStorage.getItem(RECORDATORIOS_LOG_KEY) || '{}');
   return guardado.fecha === hoy ? guardado : { fecha: hoy };
 }
@@ -72,7 +110,7 @@ async function chequearRecordatorios() {
 
   if (!log.racha && horaActual >= 20) {
     const sesion = await Api.sesion();
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = fechaHoyApp();
     if (sesion.success && sesion.data.ultima_actividad !== hoy) {
       new Notification('NutriFit', {
         body: `Tu racha de ${sesion.data.racha_dias} día${sesion.data.racha_dias === 1 ? '' : 's'} está en riesgo. ¡Registrá algo antes de medianoche!`,
@@ -86,32 +124,128 @@ async function chequearRecordatorios() {
 
 // ---------- Navegación entre pestañas (sin recargar página) ----------
 async function loadView(viewName) {
+  if (viewName === 'asistente') { await abrirAsistenteFlotante(); return; }
+  cerrarAsistenteFlotante();
   if (!VIEWS.includes(viewName)) return;
 
   document.querySelectorAll('.view').forEach((el) => el.classList.remove('active'));
   document.getElementById(`view-${viewName}`).classList.add('active');
 
   document.querySelectorAll('.nav-item[data-view]').forEach((el) => {
-    el.classList.toggle('active', el.dataset.view === viewName);
+    el.classList.toggle('active', el.dataset.view === (viewName === 'explorar' ? 'perfil' : viewName));
   });
 
   stopCamera();
-  if (viewName !== 'mi_perfil') destroyPerfilRobot();
+  if (viewName !== 'asistente' && typeof Asistente !== 'undefined') Asistente.salir();
+  if (typeof RutinasQR !== 'undefined') RutinasQR.cerrar();
+  if (typeof AmigosQR !== 'undefined') AmigosQR.cerrar();
+  if (typeof ExportarProgreso !== 'undefined') ExportarProgreso.salir();
+  destruirChartsProgreso();
+  if (viewName !== 'explorar' && typeof Explorar !== 'undefined') Explorar.salir();
+  if (viewName !== 'perfil') destroyPerfilRobot();
 
-  if (viewName === 'progreso') await renderProgreso();
-  if (viewName === 'actividad') await renderActividad();
-  if (viewName === 'mi_progreso') await renderMiProgreso();
+  if (viewName === 'inicio') await renderInicio();
   if (viewName === 'nutricion') await renderNutricion();
-  if (viewName === 'escaner') renderEscaner();
-  if (viewName === 'ranking') await renderRanking();
-  if (viewName === 'mi_perfil') await renderMiPerfil();
+  if (viewName === 'actividad') await renderActividadSeccion();
+  if (viewName === 'progreso') await renderProgreso();
+  if (viewName === 'perfil') await renderPerfil();
+  if (viewName === 'explorar') await Explorar.render();
+  if (viewName === 'asistente') await Asistente.render();
 }
 
-function showToast(text) {
+async function abrirAsistenteFlotante() {
+  const panel = document.getElementById('view-asistente');
+  if (panel.classList.contains('active')) { cerrarAsistenteFlotante(); return; }
+  panel.classList.add('active');
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Asistente NutriFit');
+  await Asistente.render();
+  const cerrar = document.createElement('button');
+  cerrar.type = 'button';
+  cerrar.className = 'btn btn-ghost';
+  cerrar.textContent = 'Cerrar asistente';
+  cerrar.onclick = cerrarAsistenteFlotante;
+  panel.prepend(cerrar);
+}
+
+function cerrarAsistenteFlotante() {
+  document.getElementById('view-asistente')?.classList.remove('active');
+  if (typeof Asistente !== 'undefined') Asistente.salir();
+}
+
+const colaNotificaciones = [];
+const eventosGamificacionMostrados = new Set();
+const xpNotificado = new WeakSet();
+let notificacionActiva = false;
+let temporizadorToast = null;
+function showToast(text, options = {}) {
+  colaNotificaciones.push({ text, ...options });
+  mostrarSiguienteNotificacion();
+}
+function cerrarNotificacion() {
+  clearTimeout(temporizadorToast);
   const toast = document.getElementById('toast');
-  toast.textContent = text;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 2600);
+  if (toast) { toast.classList.remove('show'); toast.replaceChildren(); }
+  notificacionActiva = false;
+  mostrarSiguienteNotificacion();
+}
+function mostrarSiguienteNotificacion() {
+  if (notificacionActiva || !colaNotificaciones.length) return;
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  notificacionActiva = true;
+  const next = colaNotificaciones.shift();
+  toast.className = 'toast toast--' + (next.kind || 'info');
+  toast.replaceChildren();
+  const content = document.createElement('div');
+  content.className = 'toast-content';
+  if (next.title) { const title = document.createElement('strong'); title.textContent = next.title; content.appendChild(title); }
+  const text = document.createElement('span'); text.textContent = next.text; content.appendChild(text);
+  if (next.reward) { const reward = document.createElement('span'); reward.className = 'toast-reward'; reward.textContent = next.reward; content.appendChild(reward); }
+  const close = document.createElement('button'); close.type = 'button'; close.className = 'toast-close'; close.setAttribute('aria-label', 'Cerrar notificación'); close.textContent = '×'; close.onclick = cerrarNotificacion;
+  toast.append(content, close); toast.classList.add('show');
+  temporizadorToast = setTimeout(cerrarNotificacion, next.title ? 4500 : 2600);
+}
+function marcarXPNotificado(xp) {
+  if (!xp || typeof xp !== 'object') return;
+  xpNotificado.add(xp);
+  if (!('xp_ganado' in xp)) Object.values(xp).forEach(marcarXPNotificado);
+}
+function aplicarEstadoGamificacion(estado) {
+  if (!estado) return;
+  renderUserChip({ ...(window.NutriFitUser || {}), ...estado });
+  const panel = document.getElementById('perfil-gamificacion');
+  if (panel) panel.innerHTML = renderProgresoPerfilCompacto(estado);
+  document.querySelectorAll('.perfil-nivel-badge').forEach(el => { el.textContent = 'Nivel ' + estado.nivel; });
+  const coins = document.getElementById('tienda-coins');
+  if (coins) coins.innerHTML = NutriCoinIcon(15) + Number(estado.nutri_coins).toLocaleString('es-AR') + ' NutriCoins';
+  const eq = estado.equipados || {};
+  const card = document.querySelector('.perfil-robot-card, .perfil-robot-card-compact');
+  if (card) { card.classList.remove('marco-oro', 'marco-generico'); const marco = marcoClaseDeNombre(eq.marco_perfil).trim(); if (marco) card.classList.add(marco); }
+  const stage = document.getElementById('robot-perfil-stage');
+  if (stage) { stage.classList.remove('aura-diamante', 'aura-hidratacion', 'aura-generica'); const aura = auraClaseDeNombre(eq.aura).trim(); if (aura) stage.classList.add(aura); }
+  const title = document.getElementById('perfil-titulo');
+  if (title) { title.textContent = tituloTextoDeNombre(eq.titulo); title.hidden = !eq.titulo; }
+  robotAvatarPerfil?.setSkin(skinRobotDesdeEquipados(eq));
+  robotAvatarModal?.setSkin(skinRobotDesdeEquipados(eq));
+}
+function handleGamificationResponse(g, xp) {
+  marcarXPNotificado(xp);
+  aplicarEstadoGamificacion(g.estado);
+  for (const [kind, events, title, emoji] of [['logro', g.logros_nuevos, 'Logro desbloqueado', '🏆'], ['reto', g.retos_nuevos, 'Reto completado', '🎯']]) {
+    for (const event of events || []) {
+      const id = [g.estado.id, kind, event.clave, event.periodo || ''].join(':');
+      if (eventosGamificacionMostrados.has(id)) continue;
+      eventosGamificacionMostrados.add(id);
+      showToast(event.titulo, {kind, title: emoji + ' ' + title, reward: '+' + (event.xp?.xp_ganado || 0) + ' XP'});
+    }
+  }
+  if (!g.logros_nuevos.length && !g.retos_nuevos.length && g.xp_otorgado > 0) showToast('+' + g.xp_otorgado + ' XP ganado');
+  if (g.subio_de_nivel) { launchConfetti(); reaccionarRobotAvatar('levelup'); showToast('Nivel ' + g.estado.nivel, {title:'¡Subiste de nivel!', reward: g.coins_otorgadas > 0 ? '+' + g.coins_otorgadas + ' NutriCoins' : undefined}); }
+  const logros = document.getElementById('perfil-logros');
+  if (logros) logros.innerHTML = renderLogrosPerfil({success:true, data:{logros:g.logros, total:g.logros.length, desbloqueados:g.logros.filter(l=>l.desbloqueado).length}});
+  const retos = document.getElementById('perfil-retos');
+  if (retos) retos.innerHTML = renderRetosPerfil({success:true, data:g.retos});
 }
 
 function launchConfetti() {
@@ -128,12 +262,12 @@ function launchConfetti() {
 }
 
 async function handleXPResult(xpResult, { skipRobotReaction = false } = {}) {
-  if (!xpResult) return;
+  if (!xpResult || xpNotificado.has(xpResult)) return;
   showToast(`+${xpResult.xp_ganado} XP ganado${xpResult.multiplicador > 1 ? ` (x${xpResult.multiplicador} racha)` : ''}`);
   if (xpResult.subio_de_nivel) {
     if (!skipRobotReaction) reaccionarRobotAvatar('levelup');
     launchConfetti();
-    setTimeout(() => showToast(`¡Subiste a nivel ${xpResult.nivel}! +${xpResult.coins_ganados} NutriCoins`), 700);
+    showToast(`¡Subiste a nivel ${xpResult.nivel}! +${xpResult.coins_ganados} NutriCoins`);
   } else if (!skipRobotReaction) {
     reaccionarRobotAvatar('xp');
   }
@@ -171,7 +305,7 @@ function saludoSegunHora() {
 function calcularVariacionPeso(historial, pesoActual, fechaDesde) {
   if (!historial || historial.length === 0 || pesoActual == null) return null;
 
-  const hoy = new Date();
+  const hoy = new Date(`${fechaHoyApp()}T12:00:00`);
   const desde = fechaDesde || `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`;
 
   // historial viene ASC por fecha desde el backend. Preferimos comparar
@@ -198,9 +332,9 @@ function calcularVariacionPeso(historial, pesoActual, fechaDesde) {
 // Encabezado limpio + un único bloque "Tu día" (métricas + UNA
 // recomendación contextual) + rutina de hoy como lista directa.
 // =====================================================================
-async function renderProgreso() {
-  const container = document.getElementById('view-progreso');
-  const hoy = new Date().toISOString().slice(0, 10);
+async function renderInicio() {
+  const container = document.getElementById('view-inicio');
+  const hoy = fechaHoyApp();
 
   // Api.* nunca rechaza la promesa (apiRequest atrapa errores de red y
   // siempre resuelve con {success:false,...}), así que Promise.all es
@@ -224,7 +358,7 @@ async function renderProgreso() {
     <div class="home-stack">
       <div class="home-header-clean">
         <span class="eyebrow">Hoy</span>
-        <h1>${saludoSegunHora()}, ${u.nombre.split(' ')[0]}</h1>
+        <h1>${saludoSegunHora()}, ${escapeHtml(u.nombre.split(' ')[0])}</h1>
         <p class="home-fecha">${fechaLargaHoy()}</p>
         <p class="home-subtitulo">¿Cómo viene tu día?</p>
       </div>
@@ -240,6 +374,7 @@ async function renderProgreso() {
       </div>
 
       ${renderProgresoMiniHome(pesoData, u)}
+      <p class="home-resumen mono">Nivel ${Number(u.progreso_nivel.nivel)} · ${Number(u.xp_total).toLocaleString('es-AR')} XP · Racha ${Number(u.racha_dias)} días</p>
 
       <div class="card home-actions-card">
         ${renderAccionesRapidas()}
@@ -286,19 +421,19 @@ function renderMetricasSalud(estado) {
 
   return `
     <div class="tu-dia-cols">
-      <div class="tu-dia-col" role="button" tabindex="0" onclick="loadView('actividad')">
+      <div class="tu-dia-col" role="button" tabindex="0" onclick="loadView('progreso')">
         <span class="tu-dia-col-label">Pasos</span>
         <span class="tu-dia-col-value mono">${pasos.toLocaleString('es-AR')}<small> / ${pasosMeta.toLocaleString('es-AR')}</small></span>
         <div class="tu-dia-bar"><div style="width:${pasosPct}%;background:var(--color-lima);"></div></div>
       </div>
 
-      <div class="tu-dia-col" role="button" tabindex="0" onclick="loadView('mi_progreso')">
+      <div class="tu-dia-col" role="button" tabindex="0" onclick="loadView('progreso')">
         <span class="tu-dia-col-label">Agua</span>
         <span class="tu-dia-col-value mono">${vasos}<small> / ${vasosMeta}</small></span>
         <div class="tu-dia-bar"><div style="width:${aguaPct}%;background:var(--color-hidratacion);"></div></div>
       </div>
 
-      <div class="tu-dia-col" role="button" tabindex="0" onclick="loadView('mi_progreso')">
+      <div class="tu-dia-col" role="button" tabindex="0" onclick="loadView('progreso')">
         <span class="tu-dia-col-label">Nutrición</span>
         <span class="tu-dia-col-value mono">${Math.round(cal)}<small> / ${calMeta || '—'}</small></span>
         <div class="tu-dia-bar"><div style="width:${calPct}%;background:var(--color-nutricion);"></div></div>
@@ -414,7 +549,7 @@ function renderRecomendacionDelDia(rec) {
     <div class="tu-dia-recomendacion">
       <div class="tu-dia-prioridad-texto">
         <span class="tu-dia-prioridad-label">Tu prioridad de hoy${rec.motivoObjetivo ? ` · ${rec.motivoObjetivo}` : ''}</span>
-        <p>${rec.accionLabel ? '' : `${Icon('circle-check', { size: 15 })} `}${rec.texto}</p>
+        <p>${rec.accionLabel ? '' : `${Icon('circle-check', { size: 15 })} `}${escapeHtml(rec.texto)}</p>
       </div>
       ${rec.accionLabel ? `<button type="button" class="btn btn-primary" onclick="${rec.accion}">${rec.accionLabel}</button>` : ''}
     </div>
@@ -427,7 +562,7 @@ async function agregarAguaDesdeHome() {
   const res = await Api.hidratacionSumar();
   if (!res.success) { showToast(res.message); return; }
   if (res.data.xp) await handleXPResult(res.data.xp);
-  await renderProgreso();
+  await renderInicio();
 }
 
 /** Entrenamiento de hoy — el componente de rutina de siempre
@@ -459,7 +594,7 @@ function renderProgresoMiniHome(pesoData, u) {
   }
 
   return `
-    <div class="card home-peso-row" role="button" tabindex="0" onclick="loadView('mi_progreso')">
+    <div class="card home-peso-row" role="button" tabindex="0" onclick="loadView('progreso')">
       <span class="row-icon">${Icon('scale', { size: 16 })}</span>
       <div class="peso-compacto-resumen">${pesoHTML}</div>
       <span class="chev">Mi Progreso${Icon('chevrons-right', { size: 13 })}</span>
@@ -474,7 +609,7 @@ function renderAccionesRapidas() {
       <button type="button" class="quick-action-btn" onclick="irARegistrarComida()">${Icon('utensils', { size: 20 })}Registrar comida</button>
       <button type="button" class="quick-action-btn" onclick="irAEscanear()">${Icon('scan', { size: 20 })}Escanear alimento</button>
       <button type="button" class="quick-action-btn" onclick="loadView('actividad')">${Icon('dumbbell', { size: 20 })}Registrar actividad</button>
-      <button type="button" class="quick-action-btn" onclick="loadView('ranking')">${Icon('trophy', { size: 20 })}Ranking y Tienda</button>
+      <button type="button" class="quick-action-btn" onclick="sumarAguaHome()">${Icon('droplet', { size: 20 })}Agregar agua</button>
     </div>
   `;
 }
@@ -485,21 +620,29 @@ async function irARegistrarComida() {
 }
 
 async function irAEscanear() {
-  await loadView('escaner');
+  nutricionTab = 'escaner';
+  await loadView('nutricion');
+}
+
+async function sumarAguaHome() {
+  const res = await Api.hidratacionSumar();
+  showToast(res.message);
+  if (res.success) await renderInicio();
 }
 
 // =====================================================================
-// ACTIVIDAD — "¿qué actividad hago/registro?": acciones (caminar/correr/
-// bicicleta, entrenamiento de hoy, podómetro) + historial reciente. Antes
-// vivía disperso/colapsado dentro de Mi Progreso; es la MISMA data y los
-// MISMOS endpoints (Api.actividad*, Api.pasosGet/Sumar, Api.rutinaRecomendada,
-// Api.completarEntrenamiento) — no hay backend nuevo para esta vista.
+// ACTIVIDAD (SECCIÓN PRINCIPAL) — "¿qué actividad hago/registro?":
+// acciones (caminar/correr/bicicleta, entrenamiento de hoy, podómetro) +
+// historial reciente. Ahora es una sección principal de la app (no un
+// tab dentro de Progreso). Reutiliza los MISMOS endpoints
+// (Api.actividad*, Api.pasosGet/Sumar, Api.rutinaRecomendada,
+// Api.completarEntrenamiento) — no hay backend nuevo.
 // =====================================================================
 const NOMBRES_TIPO_ACTIVIDAD = { caminata: 'Caminata', carrera: 'Carrera', ciclismo: 'Bicicleta' };
 const ICONO_TIPO_ACTIVIDAD = { caminata: 'footprints', carrera: 'zap', ciclismo: 'bike' };
 let historialActividadLimite = 10;
 
-async function renderActividad() {
+async function renderActividadSeccion() {
   const container = document.getElementById('view-actividad');
   container.innerHTML = `<div class="scanner-loading"><div class="scanner-spinner"></div><span>Cargando tu actividad…</span></div>`;
 
@@ -526,6 +669,7 @@ async function renderActividad() {
 
     <div class="card" style="margin-bottom:18px;">
       ${renderEntrenamientoHoy(rutinaData)}
+      <div id="rutinas-importadas"></div>
     </div>
 
     <div class="card" style="margin-bottom:18px;">
@@ -541,6 +685,7 @@ async function renderActividad() {
   `;
 
   renderFormActividadDemo();
+  await RutinasQR.controles();
   Api.pasosGet().then((res) => {
     const cont = document.getElementById('card-pasos');
     if (cont) cont.innerHTML = renderPasosHTML(res);
@@ -578,10 +723,12 @@ function actualizarActividadHeroSiVisible() {
 }
 
 function formatearFechaRelativa(fecha) {
-  const hoy = new Date().toISOString().slice(0, 10);
-  const ayerDt = new Date();
+  const hoy = fechaHoyApp();
+  // "Ayer" = hoy (zona app) menos un día, calculado sobre la fecha de
+  // calendario a mediodía para no cruzar límites de día por la zona horaria.
+  const ayerDt = new Date(`${hoy}T12:00:00`);
   ayerDt.setDate(ayerDt.getDate() - 1);
-  const ayer = ayerDt.toISOString().slice(0, 10);
+  const ayer = `${ayerDt.getFullYear()}-${String(ayerDt.getMonth() + 1).padStart(2, '0')}-${String(ayerDt.getDate()).padStart(2, '0')}`;
   if (fecha === hoy) return 'Hoy';
   if (fecha === ayer) return 'Ayer';
   return new Date(`${fecha}T00:00:00`).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
@@ -609,7 +756,7 @@ function renderHistorialActividadHTML(historialRes, limite) {
     return `
       <div class="meal-item">
         <div class="meal-item-info">
-          <span class="meal-item-name">${formatearFechaRelativa(h.fecha)} · ${h.tipo_nombre}</span>
+          <span class="meal-item-name">${formatearFechaRelativa(h.fecha)} · ${escapeHtml(h.tipo_nombre)}</span>
           <span class="meal-item-gramos mono">${partes.join(' · ') || h.fuente}</span>
         </div>
         <span class="cal mono">${h.calorias_kcal ? Math.round(h.calorias_kcal) : '—'} kcal</span>
@@ -645,12 +792,19 @@ const PERIODOS_MI_PROGRESO = [
 ];
 let miProgresoPeriodoDias = 7;
 
-function fmtFechaISO(d) { return d.toISOString().slice(0, 10); }
+/** Formatea un Date a "YYYY-MM-DD" por sus componentes locales (no UTC),
+ *  asumiendo que el Date fue anclado a mediodía para no cruzar límites de
+ *  día. Se evita toISOString() justamente porque convierte a UTC. */
+function fmtFechaISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 /** offsetDias=0 → período vigente (termina hoy). offsetDias=dias → el
- *  período inmediatamente anterior, de igual longitud, sin superposición. */
+ *  período inmediatamente anterior, de igual longitud, sin superposición.
+ *  Parte de HOY en la zona de la app (a mediodía) para que los rangos
+ *  coincidan con las fechas que guarda el backend. */
 function calcularRangoPeriodo(dias, offsetDias = 0) {
-  const hasta = new Date();
+  const hasta = new Date(`${fechaHoyApp()}T12:00:00`);
   hasta.setDate(hasta.getDate() - offsetDias);
   const desde = new Date(hasta);
   desde.setDate(desde.getDate() - (dias - 1));
@@ -660,13 +814,197 @@ function calcularRangoPeriodo(dias, offsetDias = 0) {
 function cambiarPeriodoMiProgreso(dias) {
   if (miProgresoPeriodoDias === dias) return;
   miProgresoPeriodoDias = dias;
-  renderMiProgreso();
+  renderProgreso();
 }
 
-async function renderMiProgreso() {
-  const container = document.getElementById('view-mi_progreso');
+// ---------------------------------------------------------------------
+// Gráficos de Mi Progreso con Chart.js (v4.4.9, UMD local en
+// js/chart-libs/chart.umd.min.js). Se carga BAJO DEMANDA sólo al abrir
+// Mi Progreso por primera vez — no se incluye en el bundle inicial ni se
+// descarga para usuarios que nunca entran a esta vista. Los datos son
+// EXCLUSIVAMENTE los que ya trae Mi Progreso (Api.progresoPesoGet para el
+// peso, Api.resumenRango para la actividad): no hay lógica de backend
+// nueva ni datos inventados.
+// ---------------------------------------------------------------------
+let _chartJsPromesa = null;
+function cargarChartJs() {
+  if (window.Chart) return Promise.resolve(window.Chart);
+  if (_chartJsPromesa) return _chartJsPromesa;
+  _chartJsPromesa = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'js/chart-libs/chart.umd.min.js?v=1';
+    s.onload = () => resolve(window.Chart);
+    s.onerror = () => { _chartJsPromesa = null; reject(new Error('No se pudo cargar Chart.js')); };
+    document.head.appendChild(s);
+  });
+  return _chartJsPromesa;
+}
+
+// Una sola instancia viva por gráfico. Se destruyen antes de recrear (al
+// cambiar de período o reentrar a la vista) y al salir de Mi Progreso,
+// para no acumular instancias ni listeners de resize (memory leaks).
+let chartPeso = null;
+let chartActividad = null;
+function destruirChartsProgreso() {
+  if (chartPeso) { chartPeso.destroy(); chartPeso = null; }
+  if (chartActividad) { chartActividad.destroy(); chartActividad = null; }
+}
+
+/** Colores tomados de las variables CSS actuales (respeta modo claro/oscuro
+ *  de NutriFit). Se leen al crear el gráfico; reentrar a la vista los
+ *  reaplica, así un cambio de tema se refleja al volver a Mi Progreso. */
+function coloresChart() {
+  const cs = getComputedStyle(document.body);
+  const v = (nombre, fallback) => (cs.getPropertyValue(nombre).trim() || fallback);
+  return {
+    lima: v('--color-lima', '#8BE422'),
+    xp: v('--color-xp', '#8B5CF6'),
+    texto: v('--text-secondary', '#6b7280'),
+    grilla: v('--border-subtle', 'rgba(0,0,0,0.08)'),
+  };
+}
+
+/** Serie de peso del período (reusa el MISMO historial filtrado que ya
+ *  usa renderSeccionPeso). null si no hay ningún registro en el período.
+ *  No inventa puntos: devuelve exactamente los registros reales. */
+function datosChartPeso(pesoRes, rangoDesde) {
+  if (!pesoRes.success) return null;
+  const historial = pesoRes.data.historial || [];
+  const metas = pesoRes.data.metas || {};
+  const delPeriodo = historial.filter((h) => h.fecha >= rangoDesde);
+  if (delPeriodo.length === 0) return null;
+  return {
+    labels: delPeriodo.map((p) => new Date(`${p.fecha}T00:00:00`).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })),
+    valores: delPeriodo.map((p) => parseFloat(p.peso_registrado)),
+    objetivo: metas.peso_objetivo != null ? parseFloat(metas.peso_objetivo) : null,
+  };
+}
+
+/** Serie diaria de pasos del período (misma construcción que las barras
+ *  anteriores: un valor por día, 0 si no hubo registro). Sólo 7/30 días. */
+function datosChartActividad(porDia, dias) {
+  const mapa = new Map((porDia || []).map((d) => [d.fecha, d]));
+  const hoy = new Date(`${fechaHoyApp()}T12:00:00`);
+  const labels = [];
+  const valores = [];
+  for (let i = dias - 1; i >= 0; i--) {
+    const d = new Date(hoy);
+    d.setDate(d.getDate() - i);
+    const fecha = fmtFechaISO(d);
+    const fechaDate = new Date(`${fecha}T00:00:00`);
+    labels.push(dias <= 7
+      ? fechaDate.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '')
+      : fechaDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }));
+    valores.push(mapa.has(fecha) ? Number(mapa.get(fecha).pasos) : 0);
+  }
+  return { labels, valores };
+}
+
+/** Crea (o recrea) los dos gráficos tras renderizar Mi Progreso. Destruye
+ *  instancias previas primero. Si Chart.js no carga, deja el estado sin
+ *  datos ya presente en el HTML (no rompe la vista). */
+async function inicializarChartsProgreso(pesoRes, actividad, dias, rangoDesde) {
+  destruirChartsProgreso();
+  let Chart;
+  try { Chart = await cargarChartJs(); } catch (e) { return; }
+  // La vista pudo cambiar mientras cargaba Chart.js (entrar/salir rápido).
+  if (!document.getElementById('view-progreso')?.classList.contains('active')) return;
+
+  const col = coloresChart();
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.color = col.texto;
+
+  // --- Gráfico 1: evolución de peso (línea) ---
+  const cvPeso = document.getElementById('chart-peso');
+  const dPeso = datosChartPeso(pesoRes, rangoDesde);
+  if (cvPeso && dPeso) {
+    const datasets = [{
+      label: 'Peso (kg)',
+      data: dPeso.valores,
+      borderColor: col.lima,
+      backgroundColor: col.lima + '33',
+      borderWidth: 2.5,
+      tension: 0.25,
+      fill: true,
+      pointRadius: dPeso.valores.length === 1 ? 5 : 3,
+      pointBackgroundColor: col.lima,
+    }];
+    if (dPeso.objetivo != null) {
+      datasets.push({
+        label: 'Objetivo',
+        data: dPeso.labels.map(() => dPeso.objetivo),
+        borderColor: col.texto,
+        borderWidth: 1.5,
+        borderDash: [5, 5],
+        pointRadius: 0,
+        fill: false,
+      });
+    }
+    chartPeso = new Chart(cvPeso, {
+      type: 'line',
+      data: { labels: dPeso.labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: dPeso.objetivo != null, labels: { boxWidth: 12, usePointStyle: true } },
+          tooltip: {
+            callbacks: {
+              title: (items) => items[0].label,
+              label: (item) => `${item.dataset.label}: ${item.formattedValue} kg`,
+            },
+          },
+        },
+        scales: {
+          x: { grid: { color: col.grilla }, ticks: { color: col.texto, maxRotation: 0, autoSkip: true, maxTicksLimit: 7 } },
+          y: { grid: { color: col.grilla }, ticks: { color: col.texto, callback: (v) => `${v} kg` } },
+        },
+      },
+    });
+  }
+
+  // --- Gráfico 2: actividad (pasos por día, barras) ---
+  const cvAct = document.getElementById('chart-actividad');
+  if (cvAct && dias <= 30) {
+    const dAct = datosChartActividad(actividad.por_dia, dias);
+    chartActividad = new Chart(cvAct, {
+      type: 'bar',
+      data: {
+        labels: dAct.labels,
+        datasets: [{
+          label: 'Pasos',
+          data: dAct.valores,
+          backgroundColor: col.lima,
+          borderRadius: 4,
+          maxBarThickness: 34,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item) => `${Number(item.raw).toLocaleString('es-AR')} pasos`,
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: col.texto, maxRotation: dias <= 7 ? 0 : 60, autoSkip: true, maxTicksLimit: dias <= 7 ? 7 : 10 } },
+          y: { beginAtZero: true, grid: { color: col.grilla }, ticks: { color: col.texto, callback: (v) => Number(v).toLocaleString('es-AR') } },
+        },
+      },
+    });
+  }
+}
+
+async function renderProgreso() {
+  const container = document.getElementById('view-progreso');
   container.innerHTML = `<div class="scanner-loading"><div class="scanner-spinner"></div><span>Cargando tu progreso…</span></div>`;
 
+  // Ahora solo mostramos estadísticas (Actividad es una sección propia)
   const dias = miProgresoPeriodoDias;
   const actual = calcularRangoPeriodo(dias);
   const previo = calcularRangoPeriodo(dias, dias);
@@ -693,6 +1031,8 @@ async function renderMiProgreso() {
       ${PERIODOS_MI_PROGRESO.map((p) => `<button type="button" class="segmented-btn${p.dias === dias ? ' active' : ''}" onclick="cambiarPeriodoMiProgreso(${p.dias})">${p.label}</button>`).join('')}
     </div>
 
+    ${ExportarProgreso.html()}
+
     <div class="today-grid" style="margin-bottom:18px;">
       ${renderResumenProgresoTiles(r, rPrevio, pesoRes, actual.desde)}
     </div>
@@ -713,6 +1053,10 @@ async function renderMiProgreso() {
       ${renderSeccionHidratacionProgreso(r.hidratacion)}
     </div>
   `;
+
+  // Los <canvas> ya están en el DOM: crear los gráficos con los MISMOS
+  // datos reales ya cargados arriba (no se vuelve a pedir nada al backend).
+  inicializarChartsProgreso(pesoRes, r.actividad, dias, actual.desde);
 }
 
 /** 4 mini-tarjetas (peso/actividad/nutrición/hidratación). Solo peso y
@@ -753,7 +1097,7 @@ function renderResumenProgresoTiles(r, rPrevio, pesoRes, actualDesde) {
       <div class="today-tile-value mono">${pesoActual != null ? `${pesoActual} kg` : '—'}</div>
       <div class="today-tile-goal">${pesoDeltaHTML || (pesoActual != null ? 'Sin cambios en el período' : 'Sin registros')}</div>
     </div>
-    <div class="today-tile" role="button" tabindex="0" onclick="loadView('actividad')">
+    <div class="today-tile" role="button" tabindex="0" onclick="loadView('progreso')">
       <div class="today-tile-head">${Icon('footprints', { size: 15 })}<span>Actividad</span></div>
       <div class="today-tile-value mono">${pasosActual.toLocaleString('es-AR')}</div>
       <div class="today-tile-goal">${actividadDeltaHTML || 'pasos en el período'}</div>
@@ -816,7 +1160,9 @@ function renderSeccionPeso(pesoRes, rangoDesde) {
       <div class="macro-preview-item"><span class="valor mono" style="color:var(--color-lima);">${pesoActual}</span><span class="label">Actual</span></div>
       ${pesoObjetivo != null ? `<div class="macro-preview-item"><span class="valor mono">${pesoObjetivo}</span><span class="label">Objetivo</span></div>` : ''}
     </div>
-    ${delPeriodo.length >= 2 ? renderSparklinePeso(delPeriodo, pesoObjetivo) : ''}
+    ${delPeriodo.length >= 1
+      ? '<div class="mp-chart-wrap"><canvas id="chart-peso" aria-label="Gráfico de evolución de peso"></canvas></div>'
+      : '<p class="empty-state-sm">Sin registros de peso en este período.</p>'}
     ${renderActualizarPesoToggle()}
   `;
 }
@@ -830,30 +1176,6 @@ function renderActualizarPesoToggle() {
         <button class="btn btn-primary" style="width:auto;padding:12px 16px;" onclick="submitPesoHoy()">Guardar</button>
       </div>
     </details>
-  `;
-}
-
-/** Línea de tendencia liviana en SVG (sin librería): viewBox fijo chico +
- *  preserveAspectRatio="none" para que estire al 100% del ancho del card
- *  vía CSS. Línea punteada opcional con el objetivo, si existe. */
-function renderSparklinePeso(puntos, objetivo) {
-  const valores = puntos.map((p) => parseFloat(p.peso_registrado));
-  const min = Math.min(...valores, objetivo ?? valores[0]);
-  const max = Math.max(...valores, objetivo ?? valores[0]);
-  const rango = max - min || 1;
-  const w = 100, h = 36, pad = 4;
-  const puntosSVG = valores.map((v, i) => {
-    const x = puntos.length > 1 ? (i / (puntos.length - 1)) * (w - pad * 2) + pad : w / 2;
-    const y = h - pad - ((v - min) / rango) * (h - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  const objetivoY = objetivo != null ? h - pad - ((objetivo - min) / rango) * (h - pad * 2) : null;
-
-  return `
-    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="mp-sparkline">
-      ${objetivoY != null ? `<line x1="0" y1="${objetivoY.toFixed(1)}" x2="${w}" y2="${objetivoY.toFixed(1)}" stroke="var(--border-subtle)" stroke-width="1" stroke-dasharray="3,3" />` : ''}
-      <polyline points="${puntosSVG}" fill="none" stroke="var(--color-lima)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-    </svg>
   `;
 }
 
@@ -885,37 +1207,11 @@ function renderSeccionActividadProgreso(a, dias) {
       <div class="macro-preview-item"><span class="valor mono" style="color:var(--color-xp);">${a.entrenamientos_completados}</span><span class="label">Entrenamientos</span></div>
     </div>
 
-    ${dias <= 30 ? renderBarrasActividad(a.por_dia, dias) : ''}
+    ${dias <= 30
+      ? '<p class="mp-chart-titulo">Pasos por día</p><div class="mp-chart-wrap mp-chart-wrap--actividad"><canvas id="chart-actividad" aria-label="Gráfico de pasos por día"></canvas></div>'
+      : ''}
 
     ${porTipoHTML ? `<div class="today-grid" style="margin-top:14px;">${porTipoHTML}</div>` : `<p class="empty-state-sm" style="margin-top:14px;">Sin sesiones registradas en este período.</p>`}
-  `;
-}
-
-/** Distribución diaria de pasos — solo para 7/30 días: a 90 días una barra
- *  por día deja de ser legible, así que ese período se queda solo con los
- *  totales de arriba (no se inventa una agregación semanal que no se pidió). */
-function renderBarrasActividad(porDia, dias) {
-  const mapa = new Map((porDia || []).map((d) => [d.fecha, d]));
-  const hoy = new Date();
-  const serie = [];
-  for (let i = dias - 1; i >= 0; i--) {
-    const d = new Date(hoy);
-    d.setDate(d.getDate() - i);
-    const fecha = fmtFechaISO(d);
-    serie.push({ fecha, pasos: mapa.has(fecha) ? Number(mapa.get(fecha).pasos) : 0 });
-  }
-  const max = Math.max(...serie.map((d) => d.pasos), 1);
-  const barrasHTML = serie.map((d) => {
-    const pct = Math.max(2, Math.round((d.pasos / max) * 100));
-    const label = dias <= 7 ? new Date(`${d.fecha}T00:00:00`).toLocaleDateString('es-AR', { weekday: 'short' }).slice(0, 3) : '';
-    return `<div class="mp-bar-col" title="${d.fecha}: ${d.pasos.toLocaleString('es-AR')} pasos"><div class="mp-bar" style="height:${pct}%;"></div>${label ? `<span class="mp-bar-label">${label}</span>` : ''}</div>`;
-  }).join('');
-
-  return `
-    <div style="margin-bottom:6px;">
-      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">Pasos por día</p>
-      <div class="mp-bars">${barrasHTML}</div>
-    </div>
   `;
 }
 
@@ -983,61 +1279,102 @@ function renderSeccionHidratacionProgreso(h) {
 // piden de nuevo solo para mostrar un resumen/acceso rápido, no se
 // duplica su lógica) y el sistema de avatar 3D existente.
 // =====================================================================
-async function renderMiPerfil() {
-  const container = document.getElementById('view-mi_perfil');
+async function renderPerfil() {
+  const container = document.getElementById('view-perfil');
   container.innerHTML = `<div class="scanner-loading"><div class="scanner-spinner"></div><span>Cargando tu perfil…</span></div>`;
 
-  const [sesion, rankingRes, tiendaRes] = await Promise.all([
-    Api.sesion(),
-    Api.ranking(),
-    Api.tiendaGet(),
+  const logrosRes = await Api.logrosGet();
+  const retosRes = await Api.retosGet();
+  const [sesion, tiendaRes] = await Promise.all([
+    Api.sesion(), Api.tiendaGet(),
   ]);
   if (!sesion.success) {
     container.innerHTML = `<p class="empty-state">No se pudo cargar tu perfil.</p>`;
     return;
   }
   const u = sesion.data;
+  const equipados = u.equipados || {};
 
+  // Pre-renderizar contenido que es async
+  const rankingHtml = `<div><h3>Comunidad y recompensas</h3><p>Ranking, amigos, QR Social y tienda en un solo lugar.</p></div><button type="button" class="btn btn-ghost" onclick="abrirComunidad()">Ver comunidad completa ${Icon('arrow-right', { size: 16 })}</button>`;
+
+  // ESTRUCTURA ÚNICA SIN TABS: Todo visible mediante scroll vertical (como antes)
   container.innerHTML = `
     <div class="view-header">
-      <div><span class="eyebrow">Identidad</span><h1>Mi Perfil</h1></div>
+      <div><span class="eyebrow">Mi Identidad</span><h1>Perfil</h1></div>
       <button type="button" class="perfil-config-btn" onclick="abrirModalEditarPerfil()" aria-label="Configuración del perfil" title="Configuración">${Icon('settings', { size: 20 })}</button>
     </div>
 
-    <div class="card perfil-robot-card">
-      <div class="robot-avatar-clickable" onclick="abrirModalPersonalizarAvatar()">
-        <div class="robot-stage robot-stage--perfil-grande" id="robot-perfil-stage"></div>
+    <!-- Avatar 3D: Importante pero compacto, NO gigante -->
+    <div class="card perfil-robot-card-compact${marcoClaseDeNombre(equipados.marco_perfil)}">
+      <div class="perfil-robot-row">
+        <div class="robot-stage-small robot-stage--perfil${auraClaseDeNombre(equipados.aura)}" id="robot-perfil-stage"></div>
+        <div class="perfil-info">
+          <h2 class="perfil-nombre">${escapeHtml(u.nombre)}</h2>
+          <span id="perfil-titulo" class="perfil-titulo-badge" ${equipados.titulo ? '' : 'hidden'}>${escapeHtml(tituloTextoDeNombre(equipados.titulo))}</span>
+          <div id="perfil-gamificacion">${renderProgresoPerfilCompacto(u)}</div>
+          <button type="button" class="btn btn-sm btn-ghost perfil-personalizar-btn" onclick="abrirModalPersonalizarAvatar()">${Icon('shirt', { size: 14 })}Personalizar</button>
+        </div>
       </div>
-      <h2 class="perfil-nombre">${u.nombre}</h2>
-      <span class="perfil-nivel-badge">Nivel ${u.progreso_nivel.nivel}</span>
-      <button type="button" class="btn btn-primary row-label perfil-personalizar-btn" onclick="abrirModalPersonalizarAvatar()">${Icon('sparkles', { size: 16 })}Personalizar avatar</button>
     </div>
 
-    <div class="card" style="margin-top:18px;">
-      ${renderGamificacionPerfil(u)}
+    <section class="perfil-accesos" aria-labelledby="perfil-accesos-titulo">
+      <h3 id="perfil-accesos-titulo">Accesos rápidos</h3>
+      <div class="perfil-accesos-grid">
+        <button type="button" class="perfil-acceso" onclick="loadView('explorar')">${Icon('map-pin', { size: 22 })}<strong>Explorar mapa</strong><span>Gimnasios y comercios cercanos</span></button>
+        <button type="button" class="perfil-acceso" onclick="AmigosQR.escanear()">${Icon('scan', { size: 22 })}<strong>Escanear QR</strong><span>Agregar amigos con QR Social</span></button>
+        <button type="button" class="perfil-acceso" onclick="abrirComunidad('amigos')">${Icon('users', { size: 22 })}<strong>Mis amigos</strong><span>Amigos y solicitudes</span></button>
+        <button type="button" class="perfil-acceso" onclick="abrirComunidad('ranking')">${Icon('trophy', { size: 22 })}<strong>Ranking</strong><span>Clasificación y ligas</span></button>
+      </div>
+    </section>
+
+    <!-- RANKING COMPLETO: Recuperar estructura visual anterior -->
+    <div class="card perfil-comunidad" id="perfil-ranking">
+      ${rankingHtml}
     </div>
 
-    <div class="card" style="margin-top:18px;">
-      ${renderLogrosPerfil(u)}
+    <!-- AMIGOS COMPLETO con QR visible -->
+
+    <!-- Logros + Retos + Tienda como resúmenes accesibles -->
+    <div class="card" id="perfil-retos" style="margin-top:18px;">
+      ${renderRetosPerfil(retosRes)}
     </div>
 
-    <div class="card" style="margin-top:18px;">
-      ${renderRetosPerfilPlaceholder()}
+    <div class="card" id="perfil-logros" style="margin-top:18px;">
+      ${renderLogrosPerfil(logrosRes)}
     </div>
 
-    <div class="card" style="margin-top:18px;">
+
+    <div class="card" id="perfil-coleccion" style="margin-top:18px;">
       ${renderColeccionPerfil(tiendaRes)}
     </div>
 
-    <div class="today-grid" style="margin-top:18px;">
-      ${renderRankingTiendaMiniCards(u, rankingRes, tiendaRes)}
-    </div>
   `;
 
   mountPerfilRobot(u.equipados || {});
 }
 
+async function abrirComunidad(seccion = 'ranking') {
+  cerrarAsistenteFlotante();
+  if (!document.getElementById('view-perfil').classList.contains('active')) await loadView('perfil');
+  if (typeof AmigosQR !== 'undefined') AmigosQR.cerrar();
+  destroyPerfilRobot();
+  await renderRanking();
+  const destino = document.getElementById(seccion === 'amigos' ? 'comunidad-amigos' : 'comunidad-ranking');
+  destino?.focus({ preventScroll: true });
+  if (seccion === 'amigos') destino?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  else window.scrollTo({ top: 0 });
+}
+
 /** Nivel/XP/NutriCoins/Racha — mismos datos que ya trae Api.sesion(). */
+function renderProgresoPerfilCompacto(u) {
+  const p = u.progreso_nivel;
+  return `<span class="perfil-nivel-badge">Nivel ${p.nivel}</span>
+    <div class="perfil-estadisticas"><span>${Number(u.xp_total).toLocaleString('es-AR')} XP</span><span class="row-label">${NutriCoinIcon(14)}${Number(u.nutri_coins).toLocaleString('es-AR')} NutriCoins</span></div>
+    <div class="xp-bar-track" role="progressbar" aria-label="Progreso al siguiente nivel" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.porcentaje}"><div class="xp-bar-fill" style="width:${p.porcentaje}%"></div></div>
+    <span class="perfil-xp-detalle">${p.xp_en_nivel} / ${p.xp_para_siguiente} XP · Racha de ${Number(u.racha_dias)} días</span>`;
+}
+
 function renderGamificacionPerfil(u) {
   const progreso = u.progreso_nivel;
   return `
@@ -1054,45 +1391,42 @@ function renderGamificacionPerfil(u) {
   `;
 }
 
-/** Logros REALES derivados de nivel/racha (los únicos dos que hoy
- *  reconoce la app). Se centraliza acá la lista para que la vista previa
- *  y el modal "Ver todos" nunca puedan desincronizarse ni inventar más
- *  logros de los que existen de verdad. */
-function obtenerLogrosPerfil(u) {
-  return [
-    { logrado: u.nivel >= 5, icono: 'award', titulo: 'Constancia', detalle: 'Alcanzar nivel 5' },
-    { logrado: u.racha_dias >= 7, icono: 'flame', titulo: 'Racha de fuego', detalle: '7 días seguidos de actividad' },
-  ];
-}
-
+/** Logros REALES (Api.logrosGet → backend/classes/gamificacion/LogrosService).
+ *  El backend es la fuente de verdad: qué logros existen, cuáles desbloqueó
+ *  el usuario y cuándo. Acá sólo se pintan. */
 function logroCardHTML(l) {
   return `
-    <div class="logro-card${l.logrado ? ' logrado' : ''}">
-      <div class="logro-icono">${Icon(l.icono, { size: 22 })}</div>
-      <div class="logro-titulo">${l.titulo}</div>
-      <div class="logro-detalle">${l.detalle}</div>
+    <div class="logro-card${l.desbloqueado ? ' logrado' : ''}">
+      <div class="logro-icono">${Icon(l.icono || 'award', { size: 22 })}</div>
+      <div class="logro-titulo">${escapeHtml(l.titulo)}</div>
+      <div class="logro-detalle">${escapeHtml(l.descripcion)}</div>
+      <div class="logro-detalle">${l.desbloqueado ? 'Desbloqueado' : 'Pendiente'} · +${Number(l.xp_recompensa || 0)} XP</div>
     </div>
   `;
 }
 
-function renderLogrosPerfil(u) {
-  const logros = obtenerLogrosPerfil(u);
+function renderLogrosPerfil(logrosRes) {
+  if (!logrosRes || !logrosRes.success) {
+    return `<h3 class="row-label" style="font-size:15px;margin-bottom:10px;">${Icon('badge-check', { size: 16 })}Logros</h3><p class="empty-state-sm">No se pudieron cargar los logros.</p>`;
+  }
+  const { logros, desbloqueados, total } = logrosRes.data;
+  // Vista previa: priorizá los desbloqueados; completá con los que faltan.
+  const ordenados = [...logros].sort((a, b) => (b.desbloqueado ? 1 : 0) - (a.desbloqueado ? 1 : 0));
+  const preview = ordenados;
   return `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-      <h3 class="row-label" style="font-size:15px;">${Icon('badge-check', { size: 16 })}Logros</h3>
+      <h3 class="row-label" style="font-size:15px;">${Icon('badge-check', { size: 16 })}Logros <span style="color:var(--text-secondary);font-weight:500;">${desbloqueados}/${total}</span></h3>
       <button type="button" class="btn-link" onclick="abrirModalLogros()">Ver todos ${Icon('arrow-right', { size: 12 })}</button>
     </div>
-    <div class="logros-grid">${logros.map(logroCardHTML).join('')}</div>
+    <div class="logros-grid">${preview.map(logroCardHTML).join('')}</div>
   `;
 }
 
-/** Modal "Ver todos" — hoy son los mismos 2 logros de la vista previa (no
- *  hay más criterios reales todavía), pero deja el lugar preparado para
- *  cuando se sumen más sin tener que rediseñar nada. */
+/** Modal "Ver todos" — lista completa real desde el backend. */
 async function abrirModalLogros() {
-  const sesion = await Api.sesion();
-  if (!sesion.success) return;
-  const logros = obtenerLogrosPerfil(sesion.data);
+  const res = await Api.logrosGet();
+  if (!res.success) return;
+  const { logros, desbloqueados, total } = res.data;
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -1101,7 +1435,7 @@ async function abrirModalLogros() {
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-icon">${Icon('badge-check', { size: 20 })}</div>
-        <div><h3>Tus logros</h3><p class="modal-subtitle">${logros.filter((l) => l.logrado).length} de ${logros.length} desbloqueados</p></div>
+        <div><h3>Tus logros</h3><p class="modal-subtitle">${desbloqueados} de ${total} desbloqueados</p></div>
         <button type="button" class="avatar-editor-close" onclick="document.getElementById('modal-logros').remove()" aria-label="Cerrar">${Icon('x', { size: 18 })}</button>
       </div>
       <div class="logros-grid" style="margin-top:16px;">${logros.map(logroCardHTML).join('')}</div>
@@ -1111,34 +1445,221 @@ async function abrirModalLogros() {
   document.body.appendChild(overlay);
 }
 
-function renderRetosPerfilPlaceholder() {
-  return `
-    <h3 class="row-label" style="font-size:15px;margin-bottom:10px;">${Icon('calendar', { size: 16 })}Retos activos</h3>
-    <p class="empty-state-sm">Todavía no existe un sistema de retos en NutriFit — esta sección va a mostrar tus retos activos (ej. "32.000 / 40.000 pasos esta semana") cuando se construya ese backend.</p>
+/** Retos semanales REALES (Api.retosGet → RetosService). Progreso en vivo
+ *  desde datos reales; recompensa una vez por semana. */
+function renderRetosPerfil(retosRes) {
+  const titulo = `<h3 class="row-label" style="font-size:15px;margin-bottom:12px;">${Icon('target', { size: 16 })}Retos de la semana</h3>`;
+  if (!retosRes || !retosRes.success) {
+    return `${titulo}<p class="empty-state-sm">No se pudieron cargar los retos.</p>`;
+  }
+  const retos = retosRes.data.retos || [];
+  if (retos.length === 0) {
+    return `${titulo}<p class="empty-state-sm">No hay retos activos en este momento.</p>`;
+  }
+  return titulo + retos.map((r) => {
+    const completado = r.estado === 'completado';
+    return `
+      <div class="reto-card${completado ? ' completado' : ''}">
+        <div class="reto-head">
+          <span class="reto-icono">${Icon(r.icono || 'target', { size: 18 })}</span>
+          <div class="reto-info">
+            <div class="reto-titulo">${escapeHtml(r.titulo)}${completado ? ` <span class="reto-check">${Icon('circle-check', { size: 14 })}</span>` : ''}</div>
+            <div class="reto-desc">${escapeHtml(r.descripcion)}</div>
+          </div>
+          <span class="reto-recompensa mono">+${r.xp_recompensa} XP</span>
+        </div>
+        <div class="reto-progreso-track"><div class="reto-progreso-fill" style="width:${r.porcentaje}%;"></div></div>
+        <div class="reto-progreso-label mono">${r.progreso} / ${r.objetivo} ${escapeHtml(r.unidad)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+/** Vista completa de Amigos con QR social */
+async function renderAmigosCompleto() {
+  const container = document.getElementById('view-perfil');
+  container.innerHTML = `
+    <div class="view-header">
+      <div><span class="eyebrow">Comunidad</span><h1>Mis Amigos</h1></div>
+    </div>
+
+    <div class="segmented" style="margin-bottom:18px;">
+      <button type="button" class="segmented-btn${perfilTab === 'amigos' ? ' active' : ''}" onclick="cambiarPerfilTab('amigos')" style="white-space:nowrap;">👥 Amigos</button>
+      <button type="button" class="segmented-btn${perfilTab === 'ranking' ? ' active' : ''}" onclick="cambiarPerfilTab('ranking')" style="white-space:nowrap;">🏆 Ranking</button>
+      <button type="button" class="segmented-btn${perfilTab === 'mi_perfil' ? ' active' : ''}" onclick="cambiarPerfilTab('mi_perfil')" style="white-space:nowrap;">👤 Volver</button>
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-primary" onclick="AmigosQR.miQR()" style="flex:1; min-width:150px;">${Icon('qr-code', { size: 16 })}Mi QR</button>
+        <button type="button" class="btn btn-primary" onclick="AmigosQR.escanear()" style="flex:1; min-width:150px;">${Icon('search', { size: 16 })}Escanear QR</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 class="row-label" style="font-size:15px;margin-bottom:12px;">${Icon('users', { size: 16 })}Lista de Amigos</h3>
+      <div id="amigos-lista" style="display:flex; flex-direction:column; gap:12px;">
+        <div class="scanner-loading"><div class="scanner-spinner" style="width:24px;height:24px;"></div><span style="font-size:13px;">Cargando amigos…</span></div>
+      </div>
+    </div>
+  `;
+
+  // Cargar lista de amigos
+  const res = await Api.amigosGet();
+  const lista = document.getElementById('amigos-lista');
+  if (res.success) {
+    const amigos = res.data.amigos || [];
+    if (amigos.length === 0) {
+      lista.innerHTML = '<p class="empty-state-sm">Aún no tenés amigos. Escaneá el QR de un amigo para agregar.</p>';
+    } else {
+      lista.innerHTML = amigos.map(a => `
+        <div class="amigo-card" style="display:flex; justify-content:space-between; align-items:center; padding:12px; border:1px solid var(--border); border-radius:8px;">
+          <div>
+            <strong>${escapeHtml(a.nombre)}</strong>
+            <p style="font-size:12px; color:var(--text-secondary); margin:4px 0 0;">Nivel ${a.nivel} • ${a.xp_total} XP</p>
+          </div>
+        </div>
+      `).join('');
+    }
+  } else {
+    lista.innerHTML = `<p class="empty-state-sm">${escapeHtml(res.message || 'No se pudo cargar la lista.')}</p>`;
+  }
+}
+
+/** Vista completa de Logros */
+async function renderLogrosCompleto() {
+  const container = document.getElementById('view-perfil');
+  container.innerHTML = `<div class="scanner-loading"><div class="scanner-spinner"></div><span>Cargando logros…</span></div>`;
+
+  const res = await Api.logrosGet();
+  if (!res.success) {
+    container.innerHTML = `
+      <div class="view-header"><div><span class="eyebrow">Logros</span><h1>Mis Logros</h1></div></div>
+      <p class="empty-state">No se pudieron cargar los logros.</p>
+    `;
+    return;
+  }
+
+  const { logros, desbloqueados, total } = res.data;
+  container.innerHTML = `
+    <div class="view-header">
+      <div><span class="eyebrow">Logros</span><h1>Mis Logros</h1></div>
+    </div>
+
+    <div class="segmented" style="margin-bottom:18px;">
+      <button type="button" class="segmented-btn${perfilTab === 'logros' ? ' active' : ''}" onclick="cambiarPerfilTab('logros')" style="white-space:nowrap;">🎖️ Logros</button>
+      <button type="button" class="segmented-btn${perfilTab === 'retos' ? ' active' : ''}" onclick="cambiarPerfilTab('retos')" style="white-space:nowrap;">🎯 Retos</button>
+      <button type="button" class="segmented-btn${perfilTab === 'mi_perfil' ? ' active' : ''}" onclick="cambiarPerfilTab('mi_perfil')" style="white-space:nowrap;">👤 Volver</button>
+    </div>
+
+    <div class="card" style="margin-bottom:12px;">
+      <p style="font-size:13px; color:var(--text-secondary);"><strong>${desbloqueados}/${total}</strong> logros desbloqueados</p>
+    </div>
+
+    <div class="logros-grid">${logros.map(logroCardHTML).join('')}</div>
   `;
 }
 
-/** "Mi Colección" — Apariencia (tintes del modelo 3D, tienda_items tipo
- *  ropa_avatar) es la ÚNICA categoría con soporte real hoy. Ropa y
- *  Accesorios existen como conceptos en la tienda/modal pero el modelo 3D
- *  es una malla única sin piezas separables (ver renderRopaPanel/
- *  renderAccesoriosPanel) — se muestran como "Próximamente", no se finge
- *  que ya funcionan. */
-function renderColeccionPerfil(tiendaRes) {
-  const items = tiendaRes.success ? tiendaRes.data : [];
-  const skins = items.filter((i) => i.tipo === 'ropa_avatar');
-  const skinsPoseidas = skins.filter((i) => i.poseido).length;
+/** Vista completa de Retos */
+async function renderRetosCompleto() {
+  const container = document.getElementById('view-perfil');
+  container.innerHTML = `<div class="scanner-loading"><div class="scanner-spinner"></div><span>Cargando retos…</span></div>`;
 
-  return `
-    <h3 class="row-label" style="font-size:15px;margin-bottom:14px;">${Icon('shirt', { size: 16 })}Mi Colección</h3>
-    <div class="macro-preview" style="margin-bottom:14px;">
-      <div class="macro-preview-item"><span class="valor mono" style="color:var(--color-lima);">${skinsPoseidas}/${skins.length || 0}</span><span class="label">Skins</span></div>
-      <div class="macro-preview-item"><span class="valor mono" style="color:var(--text-secondary);">—</span><span class="label">Ropa</span></div>
-      <div class="macro-preview-item"><span class="valor mono" style="color:var(--text-secondary);">—</span><span class="label">Accesorios</span></div>
+  const res = await Api.retosGet();
+  if (!res.success) {
+    container.innerHTML = `
+      <div class="view-header"><div><span class="eyebrow">Retos</span><h1>Mis Retos</h1></div></div>
+      <p class="empty-state">No se pudieron cargar los retos.</p>
+    `;
+    return;
+  }
+
+  const retos = res.data.retos || [];
+  container.innerHTML = `
+    <div class="view-header">
+      <div><span class="eyebrow">Retos</span><h1>Retos de la Semana</h1></div>
     </div>
-    <p class="empty-state-sm" style="margin-bottom:14px;">Ropa y accesorios todavía no están disponibles: el modelo 3D actual es una sola malla y no separa esas piezas.</p>
-    <button type="button" class="btn btn-ghost row-label" onclick="abrirModalPersonalizarAvatar('apariencia')">${Icon('sparkles', { size: 15 })}Ver colección</button>
+
+    <div class="segmented" style="margin-bottom:18px;">
+      <button type="button" class="segmented-btn${perfilTab === 'logros' ? ' active' : ''}" onclick="cambiarPerfilTab('logros')" style="white-space:nowrap;">🎖️ Logros</button>
+      <button type="button" class="segmented-btn${perfilTab === 'retos' ? ' active' : ''}" onclick="cambiarPerfilTab('retos')" style="white-space:nowrap;">🎯 Retos</button>
+      <button type="button" class="segmented-btn${perfilTab === 'mi_perfil' ? ' active' : ''}" onclick="cambiarPerfilTab('mi_perfil')" style="white-space:nowrap;">👤 Volver</button>
+    </div>
+
+    ${retos.length === 0
+      ? `<p class="empty-state">No hay retos activos en este momento.</p>`
+      : retos.map((r) => {
+          const completado = r.estado === 'completado';
+          return `
+            <div class="reto-card${completado ? ' completado' : ''}">
+              <div class="reto-head">
+                <span class="reto-icono">${Icon(r.icono || 'target', { size: 18 })}</span>
+                <div class="reto-info">
+                  <div class="reto-titulo">${escapeHtml(r.titulo)}${completado ? ` <span class="reto-check">${Icon('circle-check', { size: 14 })}</span>` : ''}</div>
+                  <div class="reto-desc">${escapeHtml(r.descripcion)}</div>
+                </div>
+                <span class="reto-recompensa mono">+${r.xp_recompensa} XP</span>
+              </div>
+              <div class="reto-progreso-track"><div class="reto-progreso-fill" style="width:${r.porcentaje}%;"></div></div>
+              <div class="reto-progreso-label mono">${r.progreso} / ${r.objetivo} ${escapeHtml(r.unidad)}</div>
+            </div>
+          `;
+        }).join('')}
   `;
+}
+
+/** Aura equipada → clase CSS de glow alrededor del avatar (sin asset 3D).
+ *  Variantes por nombre del ítem de tienda. */
+function auraClaseDeNombre(nombre) {
+  if (!nombre) return '';
+  const n = nombre.toLowerCase();
+  if (n.includes('diamante')) return ' aura-diamante';
+  if (n.includes('hidrat')) return ' aura-hidratacion';
+  return ' aura-generica';
+}
+
+/** Marco de perfil equipado → clase CSS de borde decorativo (sin asset 3D). */
+function marcoClaseDeNombre(nombre) {
+  if (!nombre) return '';
+  const n = nombre.toLowerCase();
+  if (n.includes('dorad') || n.includes('oro')) return ' marco-oro';
+  return ' marco-generico';
+}
+
+/** Extrae el texto a mostrar de un ítem tipo "titulo" (ej. 'Título: "Disciplinado"' → Disciplinado). */
+function tituloTextoDeNombre(nombre) {
+  if (!nombre) return '';
+  const m = nombre.match(/"([^"]+)"/);
+  return m ? m[1] : nombre.replace(/^t[íi]tulo:\s*/i, '');
+}
+
+/** Colección de ropa/tinte, auras, marcos y títulos con efectos reales. */
+function renderColeccionPerfil(tiendaRes) {
+  if (!tiendaRes?.success) return '<h3>Mi Colección</h3><p class="empty-state-sm">No se pudo cargar tu colección.</p>';
+  const items = tiendaRes.data;
+  const categorias = [['ropa_avatar', 'Ropa / tinte'], ['aura', 'Auras'], ['marco_perfil', 'Marcos'], ['titulo', 'Títulos']];
+  const reales = items.filter(i => categorias.some(([tipo]) => tipo === i.tipo));
+  return `<h3 class="row-label" style="font-size:15px;margin-bottom:14px;">${Icon('sparkles', {size:16})}Mi Colección</h3>
+    <div class="coleccion-categorias">${categorias.map(([tipo, label]) => {
+      const categoria = reales.filter(i => i.tipo === tipo);
+      return `<div class="coleccion-categoria"><strong>${categoria.filter(i => i.poseido).length}/${categoria.length}</strong>${label}</div>`;
+    }).join('')}</div>
+    ${reales.filter(i => i.poseido).map(i => `<div class="coleccion-item"><span>${escapeHtml(i.nombre)}${i.equipado ? ' · Equipado' : ''}</span><button type="button" class="btn btn-ghost" onclick="equiparItem(${i.id})">${i.equipado ? 'Desequipar' : 'Equipar'}</button></div>`).join('')}
+    <p class="empty-state-sm" style="margin-top:12px;">Accesorios 3D: Próximamente.</p>
+    <button type="button" class="btn btn-ghost row-label" style="margin-top:12px;" onclick="abrirModalPersonalizarAvatar('apariencia')">${Icon('shirt', {size:15})}Personalizar ropa / tinte</button>`;
+}
+
+async function refrescarTiendaYColeccion() {
+  const res = await Api.tiendaGet();
+  if (!res.success) return;
+  if (document.getElementById('tienda-grid')) renderTienda(res.data);
+  const coleccion = document.getElementById('perfil-coleccion');
+  if (coleccion) coleccion.innerHTML = renderColeccionPerfil(res);
+  if (document.querySelector('.view.active')?.id === 'view-perfil') {
+    const ranking = await Api.ranking();
+    if (ranking.success && document.getElementById('league-tabs')) { ligaActiva = ranking.data.mi_liga; renderLeagueTabs(ranking.data); }
+    if (rankingModo === 'amigos') await renderRankingAmigos();
+  }
 }
 
 const NOMBRE_LIGA = { bronce: 'Liga Bronce', plata: 'Liga Plata', oro: 'Liga Oro', diamante: 'Liga Diamante' };
@@ -1166,12 +1687,12 @@ function renderRankingTiendaMiniCards(u, rankingRes, tiendaRes) {
   }
 
   return `
-    <div class="today-tile" role="button" tabindex="0" onclick="loadView('ranking')">
+    <div class="today-tile" role="button" tabindex="0" onclick="loadView('perfil')">
       <div class="today-tile-head">${Icon('trophy', { size: 15 })}<span>Ranking</span></div>
       <div class="today-tile-value mono">${rankingValor}</div>
       <div class="today-tile-goal">${rankingLabel}</div>
     </div>
-    <div class="today-tile" role="button" tabindex="0" onclick="loadView('ranking')">
+    <div class="today-tile" role="button" tabindex="0" onclick="loadView('perfil')">
       <div class="today-tile-head">${Icon('store', { size: 15 })}<span>Tienda</span></div>
       <div class="today-tile-value mono">${tiendaValor}</div>
       <div class="today-tile-goal">${tiendaLabel}</div>
@@ -1398,6 +1919,23 @@ let tipoActividadSeleccionada = null;
  *  sigue recibiendo siempre segundos. */
 let unidadDuracionActividad = 'minutos';
 
+/** Token de idempotencia para el registro manual de actividad: viaja como
+ *  `fuente_registro_id` (el mismo campo que ya usa el backend para
+ *  deduplicar sincronizaciones de Health Connect/HealthKit — ver
+ *  actividad/registrar.php). Se renueva al abrir/cambiar el formulario y
+ *  después de cada envío exitoso, así que dos actividades reales siempre
+ *  viajan con tokens distintos; un doble click o un reintento de red
+ *  reenvía el MISMO token y el backend lo descarta como duplicado en vez
+ *  de crear una fila nueva. La defensa real es esta (server-side); el
+ *  flag de abajo solo evita el disparo doble mientras la request vuela. */
+let actividadIdempotencyToken = null;
+let enviandoActividadDemo = false;
+
+function nuevoTokenIdempotencia() {
+  if (window.crypto?.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 /** 3 botones (Caminar/Correr/Bicicleta) en vez del <select> anterior —
  *  misma fuente de datos (Api.actividadTipos, catálogo real en
  *  `tipos_actividad`), solo cambia la presentación. Los campos que se
@@ -1419,12 +1957,13 @@ async function renderFormActividadDemo() {
   if (!tipoActividadSeleccionada || !tiposActividadCache.some((t) => t.clave === tipoActividadSeleccionada)) {
     tipoActividadSeleccionada = tiposActividadCache[0].clave;
   }
+  actividadIdempotencyToken = nuevoTokenIdempotencia();
 
   cont.innerHTML = `
     <div class="segmented" style="margin-bottom:14px;">
       ${tiposActividadCache.map((t) => `
         <button type="button" class="segmented-btn${t.clave === tipoActividadSeleccionada ? ' active' : ''}" onclick="seleccionarTipoActividad('${t.clave}')">
-          ${Icon(ICONO_TIPO_ACTIVIDAD[t.clave] || 'activity', { size: 15 })} ${t.nombre}
+          ${Icon(ICONO_TIPO_ACTIVIDAD[t.clave] || 'activity', { size: 15 })} ${escapeHtml(t.nombre)}
         </button>
       `).join('')}
     </div>
@@ -1566,6 +2105,11 @@ function actualizarEquivalenciaDuracion() {
 }
 
 async function enviarActividadDemo() {
+  // Guardia liviana contra doble-tap mientras la request está en vuelo —
+  // la defensa real contra duplicados es el fuente_registro_id que manda
+  // el backend a validar (ver comentario de actividadIdempotencyToken).
+  if (enviandoActividadDemo) return;
+
   const clave = tipoActividadSeleccionada;
   const duracionMin = duracionEnMinutos(
     document.getElementById('input-actividad-duracion')?.value,
@@ -1584,45 +2128,68 @@ async function enviarActividadDemo() {
   const distanciaKm = parsearNumeroFlexible(document.getElementById('input-actividad-distancia')?.value);
   const pasos = parseInt(document.getElementById('input-actividad-pasos')?.value, 10);
 
-  const payload = { tipo: clave, duracion_segundos: duracionMin * 60, fuente: 'manual' };
+  if (!actividadIdempotencyToken) actividadIdempotencyToken = nuevoTokenIdempotencia();
+  const payload = {
+    tipo: clave,
+    duracion_segundos: duracionMin * 60,
+    fuente: 'manual',
+    fuente_registro_id: actividadIdempotencyToken,
+  };
   if (!Number.isNaN(distanciaKm) && distanciaKm > 0) payload.distancia_metros = Math.round(distanciaKm * 1000);
   if (!Number.isNaN(pasos) && pasos > 0) payload.pasos = pasos;
 
-  const res = await Api.actividadRegistrar(payload);
   const resultadoDiv = document.getElementById('resultado-actividad-demo');
-  if (!res.success) {
-    resultadoDiv.innerHTML = `<p class="empty-state-sm">${res.message || 'No se pudo registrar la actividad.'}</p>`;
-    return;
-  }
+  enviandoActividadDemo = true;
+  try {
+    const res = await Api.actividadRegistrar(payload);
+    if (!res.success) {
+      resultadoDiv.innerHTML = `<p class="empty-state-sm">${escapeHtml(res.message || 'No se pudo registrar la actividad.')}</p>`;
+      return;
+    }
 
-  const r = res.data.registro;
-  resultadoDiv.innerHTML = `
-    <div class="macro-preview" style="margin:14px 0 0;">
-      <div class="macro-preview-item"><span class="valor mono" style="color:var(--color-nutricion);">${r.calorias_kcal}</span><span class="label">kcal</span></div>
-      ${r.distancia_metros ? `<div class="macro-preview-item"><span class="valor mono">${(r.distancia_metros / 1000).toFixed(2)}</span><span class="label">km</span></div>` : ''}
-      ${r.velocidad_media_kmh ? `<div class="macro-preview-item"><span class="valor mono">${r.velocidad_media_kmh}</span><span class="label">km/h media</span></div>` : ''}
-      ${r.ritmo_seg_por_km ? `<div class="macro-preview-item"><span class="valor mono">${formatearRitmo(r.ritmo_seg_por_km)}</span><span class="label">Ritmo</span></div>` : ''}
-    </div>
-  `;
-  showToast('Actividad registrada.');
+    // Mismo token que un envío anterior ya guardó (doble tap, reintento de
+    // red): el backend no creó una fila nueva. Próximo envío real arranca
+    // con un token nuevo igual, así que no hace falta hacer nada especial
+    // acá más que avisar con un mensaje honesto.
+    if (res.data.ya_existia) {
+      showToast('Esa actividad ya estaba registrada.');
+      return;
+    }
 
-  if (res.data.xp?.sesion || res.data.xp?.meta_pasos) {
-    if (res.data.xp.sesion) await handleXPResult(res.data.xp.sesion);
-    if (res.data.xp.meta_pasos) await handleXPResult(res.data.xp.meta_pasos, { skipRobotReaction: true });
-  } else if (res.data.xp) {
-    await handleXPResult(res.data.xp);
-  }
+    const r = res.data.registro;
+    resultadoDiv.innerHTML = `
+      <div class="macro-preview" style="margin:14px 0 0;">
+        <div class="macro-preview-item"><span class="valor mono" style="color:var(--color-nutricion);">${r.calorias_kcal}</span><span class="label">kcal</span></div>
+        ${r.distancia_metros ? `<div class="macro-preview-item"><span class="valor mono">${(r.distancia_metros / 1000).toFixed(2)}</span><span class="label">km</span></div>` : ''}
+        ${r.velocidad_media_kmh ? `<div class="macro-preview-item"><span class="valor mono">${r.velocidad_media_kmh}</span><span class="label">km/h media</span></div>` : ''}
+        ${r.ritmo_seg_por_km ? `<div class="macro-preview-item"><span class="valor mono">${formatearRitmo(r.ritmo_seg_por_km)}</span><span class="label">Ritmo</span></div>` : ''}
+      </div>
+    `;
+    showToast('Actividad registrada.');
+    // Se guardó de verdad: la próxima actividad (aunque sea del mismo tipo,
+    // sin volver a abrir el formulario) tiene que viajar con un token propio.
+    actividadIdempotencyToken = nuevoTokenIdempotencia();
 
-  if (pasos > 0) {
-    const resPasos = await Api.pasosGet();
-    if (resPasos.success) actualizarResumenPasosHome(resPasos.data);
-  }
+    if (res.data.xp?.sesion || res.data.xp?.meta_pasos) {
+      if (res.data.xp.sesion) await handleXPResult(res.data.xp.sesion);
+      if (res.data.xp.meta_pasos) await handleXPResult(res.data.xp.meta_pasos, { skipRobotReaction: true });
+    } else if (res.data.xp) {
+      await handleXPResult(res.data.xp);
+    }
 
-  actualizarActividadHeroSiVisible();
-  const histCont = document.getElementById('card-historial-actividad');
-  if (histCont) {
-    const histRes = await Api.actividadHistorial(historialActividadLimite);
-    histCont.innerHTML = renderHistorialActividadHTML(histRes, historialActividadLimite);
+    if (pasos > 0) {
+      const resPasos = await Api.pasosGet();
+      if (resPasos.success) actualizarResumenPasosHome(resPasos.data);
+    }
+
+    actualizarActividadHeroSiVisible();
+    const histCont = document.getElementById('card-historial-actividad');
+    if (histCont) {
+      const histRes = await Api.actividadHistorial(historialActividadLimite);
+      histCont.innerHTML = renderHistorialActividadHTML(histRes, historialActividadLimite);
+    }
+  } finally {
+    enviandoActividadDemo = false;
   }
 }
 
@@ -1775,7 +2342,7 @@ function renderAparienciaPanel(items, nivelUsuario) {
         return `
           <div class="apariencia-card ${estado}">
             <div class="apariencia-swatch" style="background:${hex};"></div>
-            <div class="apariencia-name">${item.nombre}</div>
+            <div class="apariencia-name">${escapeHtml(item.nombre)}</div>
             ${estado === 'available' ? `<div class="apariencia-price row-label" style="justify-content:center;">${precioHTML}</div>` : ''}
             ${item.poseido && estado !== 'equipped' ? '<div class="badge-desbloqueado">Desbloqueada</div>' : ''}
             ${accion}
@@ -1932,20 +2499,8 @@ async function cargarPersonalizarAvatar() {
   if (panel) panel.innerHTML = renderAparienciaPanel(remeras, sesionRes.data.nivel);
 }
 
-async function canjearPrendaModal(itemId) {
-  const res = await Api.tiendaCanjear(itemId);
-  showToast(res.message);
-  if (res.success) await cargarPersonalizarAvatar();
-}
-
-async function equiparPrendaModal(itemId) {
-  const res = await Api.tiendaEquipar(itemId);
-  showToast(res.message);
-  if (res.success) {
-    await cargarPersonalizarAvatar();
-    await refrescarAvatarPrincipal();
-  }
-}
+async function canjearPrendaModal(itemId) { return operarTienda(itemId, 'canjear'); }
+async function equiparPrendaModal(itemId) { return operarTienda(itemId, 'equipar'); }
 
 // ---------- Iconos dinámicos por tipo de ejercicio ----------
 // Familia SVG consistente (ver frontend/js/icons.js): no hay un ícono
@@ -2025,6 +2580,10 @@ function renderRutinaHTML(rutinaData) {
     return `<p class="empty-state">${mensaje}</p>`;
   }
   const r = rutinaData.data;
+  // El backend es la fuente de verdad de "qué se marcó hoy" (persistido en
+  // ejercicios_completados) — se sincroniza acá, en el único lugar por el
+  // que pasan tanto Home como Actividad antes de pintar la rutina.
+  ejerciciosMarcados = new Set(r.ejercicios_completados_hoy || []);
   const total = r.ejercicios.length;
   const hechos = r.completada_hoy ? total : r.ejercicios.filter((e) => ejerciciosMarcados.has(e.id)).length;
   const pct = total > 0 ? Math.round((hechos / total) * 100) : 0;
@@ -2043,14 +2602,14 @@ function renderRutinaHTML(rutinaData) {
   const ejerciciosHTML = r.ejercicios.map((e) => {
     const marcado = r.completada_hoy || ejerciciosMarcados.has(e.id);
     return `
-      <div class="exercise-row${marcado ? ' done' : ''}" style="cursor: pointer; position: relative;">
+      <div class="exercise-row${marcado ? ' done' : ''}" data-ejercicio-id="${e.id}" style="cursor: pointer; position: relative;">
         <div onclick="${r.completada_hoy ? '' : `toggleEjercicioMarcado(${e.id}, ${r.id})`}" style="display: flex; align-items: center; flex: 1; gap: 12px;">
           <span class="exercise-row-check">${Icon(marcado ? 'circle-check' : 'circle', { size: 18 })}</span>
-          <span class="exercise-row-name">${e.nombre}</span>
-          <span class="exercise-row-meta mono">${e.series} × ${e.repeticiones}</span>
+          <span class="exercise-row-name">${escapeHtml(e.nombre)}</span>
+          <span class="exercise-row-meta mono">${e.series} × ${escapeHtml(e.repeticiones)}</span>
         </div>
         <button type="button" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; font-size: 14px;"
-          onclick="abrirDetalleEjercicio('${e.catalogo_clave || e.nombre}', ${e.catalogo_id || 'null'}); event.stopPropagation();"
+          onclick="abrirDetalleEjercicio(${htmlJsString(e.catalogo_clave || e.nombre)}, ${e.catalogo_id || 'null'}); event.stopPropagation();"
           title="Ver cómo hacerlo">
           ⓘ
         </button>
@@ -2060,13 +2619,15 @@ function renderRutinaHTML(rutinaData) {
 
   return `
     <div class="rutina-header-row">
-      <h4>${r.titulo} [TEST v1]</h4>
+      <h4>${escapeHtml(r.titulo)}</h4>
       <span class="mono routine-progress-label">${hechos} de ${total} ejercicios</span>
     </div>
     ${personalizedInfo}
+    ${r.importada ? '<p class="empty-state-sm">Rutina importada por QR. Elegida por vos; no sustituye tu plan personalizado.</p>' : ''}
     <div class="routine-progress-track"><div class="routine-progress-fill" style="width:${pct}%;"></div></div>
     <div class="exercise-list">${ejerciciosHTML}</div>
     <div class="exercise-list-divider"></div>
+    ${RutinasQR.acciones(r)}
     <button class="btn btn-primary btn-entrenar-listo${!r.completada_hoy && pct === 100 ? ' ready' : ''}" ${r.completada_hoy ? 'disabled style="opacity:.5;"' : ''}
       onclick="marcarEntrenamiento(${r.id})">
       ${r.completada_hoy ? `${Icon('circle-check', { size: 17 })} Ya entrenaste hoy` : `${Icon('trophy', { size: 17 })} Marcar como Entrenado (+25 XP)`}
@@ -2082,14 +2643,19 @@ function renderRutinaHTML(rutinaData) {
  *  la primera del DOM (Home), aunque el usuario esté tocando la de
  *  Actividad. Escopear a la vista activa resuelve la ambigüedad sin tener
  *  que duplicar la rutina en dos sistemas separados. */
-function toggleEjercicioMarcado(ejercicioId, rutinaId) {
-  if (ejerciciosMarcados.has(ejercicioId)) ejerciciosMarcados.delete(ejercicioId);
-  else ejerciciosMarcados.add(ejercicioId);
-
+/** Repinta UNA fila (y los totales/barra de progreso) según el estado
+ *  actual de `ejerciciosMarcados` — no toca las demás filas, así que
+ *  marcar o desmarcar un ejercicio nunca afecta al resto. */
+function actualizarFilaEjercicioUI(ejercicioId) {
   const vista = document.querySelector('.view.active');
   if (!vista) return;
 
-  const fila = vista.querySelector(`.exercise-row[onclick*="toggleEjercicioMarcado(${ejercicioId},"]`);
+  // data-ejercicio-id vive en `.exercise-row` (antes se buscaba un
+  // `onclick` que en realidad está en un <div> hijo — ese selector nunca
+  // matcheaba nada, así que ninguna fila se marcaba individualmente de
+  // verdad: por eso la única forma "visible" de avanzar terminaba siendo
+  // completar toda la rutina de una).
+  const fila = vista.querySelector(`.exercise-row[data-ejercicio-id="${ejercicioId}"]`);
   if (fila) {
     const marcado = ejerciciosMarcados.has(ejercicioId);
     fila.classList.toggle('done', marcado);
@@ -2107,6 +2673,31 @@ function toggleEjercicioMarcado(ejercicioId, rutinaId) {
   vista.querySelector('.btn-entrenar-listo')?.classList.toggle('ready', pct === 100);
 }
 
+/** Marca/desmarca UN ejercicio, independiente del resto, y lo persiste en
+ *  backend (ejercicios_completados) — no es solo un cambio visual: si
+ *  falla el guardado, se revierte el estado local para no mentirle al
+ *  usuario sobre qué quedó realmente guardado. No otorga XP (ver
+ *  completar_ejercicio.php), así que marcar/desmarcar repetido no sirve
+ *  para farmear nada. */
+async function toggleEjercicioMarcado(ejercicioId, rutinaId) {
+  const estabaMarcado = ejerciciosMarcados.has(ejercicioId);
+
+  if (estabaMarcado) ejerciciosMarcados.delete(ejercicioId);
+  else ejerciciosMarcados.add(ejercicioId);
+  actualizarFilaEjercicioUI(ejercicioId);
+
+  const res = estabaMarcado
+    ? await Api.descompletarEjercicio(ejercicioId)
+    : await Api.completarEjercicio(ejercicioId, rutinaId);
+
+  if (!res.success) {
+    if (estabaMarcado) ejerciciosMarcados.add(ejercicioId);
+    else ejerciciosMarcados.delete(ejercicioId);
+    actualizarFilaEjercicioUI(ejercicioId);
+    showToast(res.message || 'No se pudo guardar el ejercicio.');
+  }
+}
+
 async function marcarEntrenamiento(rutinaId) {
   const res = await Api.completarEntrenamiento(rutinaId);
   if (!res.success) { showToast(res.message); return; }
@@ -2118,8 +2709,8 @@ async function marcarEntrenamiento(rutinaId) {
   // (Home o Actividad, ambas muestran la misma rutina real) — no siempre
   // es Home desde que Actividad también permite completar el entrenamiento.
   const vistaActivaId = document.querySelector('.view.active')?.id;
-  if (vistaActivaId === 'view-actividad') await renderActividad();
-  else await renderProgreso();
+  if (vistaActivaId === 'view-progreso') await renderActividad();
+  else await renderInicio();
   // Ni Home ni Actividad tienen robot propio (solo Mi Perfil/el modal) —
   // reaccionarRobotAvatar no hace nada salvo que el modal esté abierto
   // (guard interno), sin error.
@@ -2138,7 +2729,7 @@ async function abrirDetalleEjercicio(clave, ejercicioId) {
   modal.style.display = 'block';
 
   try {
-    const res = await fetch(`/nutrifittwo/backend/api/entrenamiento/ejercicio.php?clave=${encodeURIComponent(clave)}`, {
+    const res = await fetch(`${API_BASE}/entrenamiento/ejercicio.php?clave=${encodeURIComponent(clave)}`, {
       credentials: 'include',
     });
     const data = await res.json();
@@ -2162,7 +2753,7 @@ async function abrirDetalleEjercicio(clave, ejercicioId) {
       <div style="margin-bottom: 20px;">
         <h4 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Cómo hacerlo</h4>
         <ol style="margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.6; color: var(--text-primary);">
-          ${instruccionesArray.map(l => `<li style="margin-bottom: 6px;">${l.trim()}</li>`).join('')}
+          ${instruccionesArray.map(l => `<li style="margin-bottom: 6px;">${escapeHtml(l.trim())}</li>`).join('')}
         </ol>
       </div>
     ` : '';
@@ -2172,16 +2763,16 @@ async function abrirDetalleEjercicio(clave, ejercicioId) {
       <div style="margin-bottom: 20px;">
         <h4 style="margin: 0 0 10px; font-size: 14px; font-weight: 600;">Errores comunes</h4>
         <ul style="margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.6; color: var(--text-primary);">
-          ${erroresArray.map(l => `<li style="margin-bottom: 6px;">${l.trim()}</li>`).join('')}
+          ${erroresArray.map(l => `<li style="margin-bottom: 6px;">${escapeHtml(l.trim())}</li>`).join('')}
         </ul>
       </div>
     ` : '';
 
     const infoHTML = `
       <div style="background: var(--bg-secondary); border-radius: 8px; padding: 12px; margin-bottom: 14px; font-size: 12px;">
-        ${e.grupo_muscular ? `<div><span style="color: var(--text-secondary);">Grupo muscular:</span> ${e.grupo_muscular}</div>` : ''}
+        ${e.grupo_muscular ? `<div><span style="color: var(--text-secondary);">Grupo muscular:</span> ${escapeHtml(e.grupo_muscular)}</div>` : ''}
         ${e.nivel ? `<div><span style="color: var(--text-secondary);">Nivel:</span> ${etiquetaNivel(e.nivel)}</div>` : ''}
-        ${e.equipamiento ? `<div><span style="color: var(--text-secondary);">Equipamiento:</span> ${e.equipamiento}</div>` : ''}
+        ${e.equipamiento ? `<div><span style="color: var(--text-secondary);">Equipamiento:</span> ${escapeHtml(e.equipamiento)}</div>` : ''}
       </div>
     `;
 
@@ -2293,7 +2884,7 @@ function renderCaloriasCard(d) {
       ${macro('Grasas', 'grasa', d.totales_consumidos.grasas, d.metas.meta_grasas)}
 
       <div class="nutri-recomendacion">
-        <p class="row-label">${Icon('sparkles', { size: 14 })}${d.recomendacion_ia}</p>
+        <p class="row-label">${Icon('sparkles', { size: 14 })}${escapeHtml(d.recomendacion_ia)}</p>
       </div>
     </div>
   `;
@@ -2344,12 +2935,12 @@ function renderDiarioComidas(comidasPorTipo) {
       ? items.map((i) => `
           <div class="meal-item">
             <div class="meal-item-info">
-              <span class="meal-item-name">${i.alimento}</span>
+              <span class="meal-item-name">${escapeHtml(i.alimento)}</span>
               <span class="meal-item-gramos mono">${i.gramos} g</span>
             </div>
             <div class="meal-item-right">
               <span class="cal mono">${Math.round(i.calorias_totales)} kcal</span>
-              <button type="button" class="meal-item-delete" onclick="eliminarRegistroComida(${i.id})" aria-label="Eliminar ${i.alimento} del registro">${Icon('trash-2', { size: 15 })}</button>
+              <button type="button" class="meal-item-delete" onclick="eliminarRegistroComida(${i.id})" aria-label="Eliminar ${escapeHtml(i.alimento)} del registro">${Icon('trash-2', { size: 15 })}</button>
             </div>
           </div>
         `).join('')
@@ -2383,14 +2974,14 @@ function renderRecomendacionesSeccion(recomendaciones) {
   const itemsHTML = itemsAMostrar.map(item => {
     const alimentoId = item.alimento?.id || 0;
     const nombre = item.alimento?.nombre || 'Alimento';
-    const nombreEscapado = nombre.replace(/'/g, "\\'");
+    const nombreEscapado = htmlJsString(nombre);
     const gramos = item.porcion?.gramos || 100;
     const etiqueta = item.porcion?.etiqueta || `${gramos} g`;
     const kcal = Math.round(item.nutricion?.calorias || 0);
     const proteina = Math.round((item.nutricion?.proteinas || 0) * 10) / 10;
     const carbohidratos = item.nutricion?.carbohidratos || 0;
     const grasas = item.nutricion?.grasas || 0;
-    const motivo = item.motivo?.texto ? `<div style="font-size:12px; color:var(--text-secondary); margin-top:6px;">${item.motivo.texto}</div>` : '';
+    const motivo = item.motivo?.texto ? `<div style="font-size:12px; color:var(--text-secondary); margin-top:6px;">${escapeHtml(item.motivo.texto)}</div>` : '';
 
     // abrirModalRegistroComida recalcula proporcionalmente asumiendo que
     // las macros recibidas son "por 100g" — normalizamos según la porción
@@ -2405,18 +2996,18 @@ function renderRecomendacionesSeccion(recomendaciones) {
       <div class="recommendation-item" style="background:var(--bg-secondary); border-radius:8px; padding:12px; margin-bottom:8px;">
         <div style="display:flex; justify-content:space-between; align-items:start; gap:8px;">
           <div style="flex:1;">
-            <div style="font-weight:600; font-size:14px;">${nombre}</div>
+            <div style="font-weight:600; font-size:14px;">${escapeHtml(nombre)}</div>
             <div style="font-size:12px; color:var(--text-secondary);">${etiqueta}</div>
             <div style="font-size:13px; margin-top:4px;"><strong>${kcal}</strong> kcal · <strong>${proteina}g</strong> proteína</div>
             ${motivo}
           </div>
           <div style="display:flex; gap:6px; flex-direction:column;">
             <button type="button" class="btn btn-primary" style="padding:6px 10px; font-size:12px; white-space:nowrap;"
-              onclick="agregarDesdeRecomendacion(${alimentoId}, '${nombreEscapado}', ${cal100}, ${prot100}, ${carb100}, ${gras100}, ${gramos})">
+              onclick="agregarDesdeRecomendacion(${alimentoId}, ${nombreEscapado}, ${cal100}, ${prot100}, ${carb100}, ${gras100}, ${gramos})">
               Agregar
             </button>
             <button type="button" style="background:none; border:1px solid var(--border-color); border-radius:6px; padding:4px 8px; cursor:pointer; font-size:14px; color:var(--color-warning);"
-              onclick="abrirModalGuardarFavorito(${alimentoId}, '${nombreEscapado}', ${gramos}, 'g', ${kcal}, ${proteina}, ${carbohidratos}, ${grasas})">
+              onclick="abrirModalGuardarFavorito(${alimentoId}, ${nombreEscapado}, ${gramos}, 'g', ${kcal}, ${proteina}, ${carbohidratos}, ${grasas})">
               ♡
             </button>
           </div>
@@ -2433,30 +3024,41 @@ function renderRecomendacionesSeccion(recomendaciones) {
   `;
 }
 
+let favoritosCache = [];
+
 function renderFavoritosSeccion(favoritos) {
   if (!favoritos || favoritos.length === 0) {
-    return '';
+    return `<div class="card"><h3>${Icon('heart', { size: 16 })}Tus favoritos</h3><p>Guardá un alimento con el botón de corazón para volver a registrarlo fácilmente.</p></div>`;
   }
+  favoritosCache = favoritos;
 
-  const itemsHTML = favoritos.slice(0, 5).map(fav => {
+  const itemsHTML = favoritos.map(fav => {
     const kcal = Math.round(fav.calorias_base || 0);
     const proteina = Math.round((fav.proteinas_base || 0) * 10) / 10;
-    const nombreEscapado = fav.nombre_personalizado.replace(/'/g, "\\'");
-    // Un favorito sin alimento_id (ej. de un escaneo IA sin match nutricional)
-    // no puede registrarse: registrar_comida.php exige un alimento_id real.
-    const puedeAgregarse = !!fav.alimento_id;
+    const nombreEscapado = htmlJsString(fav.nombre_personalizado);
+    const ingredientesCompuesto = fav.es_compuesto ? (fav.metadata?.ingredientes || []) : [];
+    // Un favorito simple sin alimento_id (ej. de un escaneo IA sin match
+    // nutricional) no puede registrarse: registrar_comida.php exige un
+    // alimento_id real. Uno compuesto se registra ingrediente por
+    // ingrediente, así que alcanza con que tenga la lista guardada.
+    const puedeAgregarse = fav.es_compuesto ? ingredientesCompuesto.length > 0 : !!fav.alimento_id;
+    const subtitulo = fav.es_compuesto
+      ? `Compuesto · ${ingredientesCompuesto.length} ingrediente${ingredientesCompuesto.length === 1 ? '' : 's'}`
+      : `${fav.gramos_base} ${fav.unidad}`;
+    const botonAgregar = fav.es_compuesto
+      ? `onclick="agregarFavoritoCompuestoAlDia(${fav.id})"`
+      : `onclick="agregarFavoritoAlDia(${fav.id}, ${fav.alimento_id}, ${nombreEscapado}, ${fav.calorias_base}, ${fav.proteinas_base}, ${fav.carbohidratos_base}, ${fav.grasas_base}, ${fav.gramos_base})"`;
 
     return `
       <div class="favorite-item" style="background:var(--bg-secondary); border-radius:8px; padding:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
         <div style="flex:1;">
-          <div style="font-weight:600; font-size:14px;"><span style="color:var(--color-warning);">♡</span> ${fav.nombre_personalizado}</div>
-          <div style="font-size:12px; color:var(--text-secondary);">${fav.gramos_base} ${fav.unidad}</div>
+          <div style="font-weight:600; font-size:14px;"><span style="color:var(--color-warning);">♡</span> ${escapeHtml(fav.nombre_personalizado)}</div>
+          <div style="font-size:12px; color:var(--text-secondary);">${escapeHtml(subtitulo)}</div>
           <div style="font-size:13px; margin-top:4px;"><strong>${kcal}</strong> kcal · <strong>${proteina}g</strong> proteína</div>
         </div>
         <div style="display:flex; gap:6px; align-items:center;">
           ${puedeAgregarse ? `
-          <button type="button" class="btn btn-primary" style="padding:6px 12px; font-size:12px; white-space:nowrap;"
-            onclick="agregarFavoritoAlDia(${fav.id}, ${fav.alimento_id}, '${nombreEscapado}', ${fav.calorias_base}, ${fav.proteinas_base}, ${fav.carbohidratos_base}, ${fav.grasas_base}, ${fav.gramos_base})">
+          <button type="button" class="btn btn-primary" style="padding:6px 12px; font-size:12px; white-space:nowrap;" ${botonAgregar}>
             Agregar
           </button>` : `<span style="font-size:11px; color:var(--text-secondary);">Sin match</span>`}
           <button type="button" style="background:none; border:none; cursor:pointer; font-size:15px; color:var(--text-secondary); padding:4px;"
@@ -2476,7 +3078,14 @@ function renderFavoritosSeccion(favoritos) {
 
 async function renderNutricion() {
   const container = document.getElementById('view-nutricion');
-  const hoy = new Date().toISOString().slice(0, 10);
+
+  if (nutricionTab === 'escaner') {
+    await renderEscaner();
+    return;
+  }
+
+  // Tab: Diario
+  const hoy = fechaHoyApp();
   const res = await Api.dashboardDiario(hoy);
   const hidratacion = await Api.hidratacionGet();
 
@@ -2496,7 +3105,7 @@ async function renderNutricion() {
   }
 
   if (!res.success) {
-    container.innerHTML = `<p class="empty-state">${res.message}</p>`;
+    container.innerHTML = `<p class="empty-state">${escapeHtml(res.message)}</p>`;
     return;
   }
 
@@ -2507,6 +3116,11 @@ async function renderNutricion() {
   container.innerHTML = `
     <div class="view-header">
       <div><span class="eyebrow">Hoy</span><h1>Nutrición Diaria</h1></div>
+    </div>
+
+    <div class="segmented" style="margin-bottom:18px;">
+      <button type="button" class="segmented-btn${nutricionTab === 'diario' ? ' active' : ''}" onclick="cambiarNutricionTab('diario')">📋 Diario</button>
+      <button type="button" class="segmented-btn${nutricionTab === 'escaner' ? ' active' : ''}" onclick="cambiarNutricionTab('escaner')">📸 Escáner</button>
     </div>
 
     <div class="grid-2">
@@ -2551,15 +3165,15 @@ async function buscarAlimentos(query) {
   }
 
   container.innerHTML = res.data.map((a) => {
-    const nombreEscapado = a.nombre_mostrado.replace(/'/g, "\\'");
+    const nombreEscapado = htmlJsString(a.nombre_mostrado);
     return `
     <div class="meal-item" style="display:flex; align-items:center; gap:8px;">
-      <div style="flex:1; cursor:pointer;" onclick="abrirModalRegistroComida(${a.id}, '${nombreEscapado}', ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})">
-        <span>${a.nombre_mostrado}</span>
+      <div style="flex:1; cursor:pointer;" onclick="abrirModalRegistroComida(${a.id}, ${nombreEscapado}, ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})">
+        <span>${escapeHtml(a.nombre_mostrado)}</span>
         <span class="cal">${a.calorias_por_100g} kcal/100g</span>
       </div>
       <button type="button" style="background:none; border:none; cursor:pointer; font-size:15px; color:var(--color-warning); padding:4px;"
-        onclick="event.stopPropagation(); abrirModalGuardarFavorito(${a.id}, '${nombreEscapado}', 100, 'g', ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})" title="Guardar como favorito">♡</button>
+        onclick="event.stopPropagation(); abrirModalGuardarFavorito(${a.id}, ${nombreEscapado}, 100, 'g', ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})" title="Guardar como favorito">♡</button>
     </div>
   `;
   }).join('');
@@ -2594,7 +3208,7 @@ function abrirModalRegistroComida(alimentoId, nombre, caloriasPor100g, proteinas
       <div class="modal-header">
         <div class="modal-icon">${Icon('utensils', { size: 22 })}</div>
         <div>
-          <h3>${nombre}</h3>
+          <h3>${escapeHtml(nombre)}</h3>
           <p class="modal-subtitle">${macrosPor100gModal.calorias} kcal por cada 100g</p>
         </div>
       </div>
@@ -2742,6 +3356,29 @@ async function agregarFavoritoAlDia(favoritoId, alimentoId, nombre, caloriasBase
   );
 }
 
+/** Favorito compuesto (varios alimentos, ej. "Mi licuado de siempre"):
+ *  no hay un único alimento_id para abrir el modal de cantidad, así que
+ *  se re-registra cada ingrediente guardado tal cual quedó (mismo motor
+ *  que agregarPlatoDetectado en el escáner), sin volver a llamar a la IA. */
+async function agregarFavoritoCompuestoAlDia(favoritoId) {
+  const fav = favoritosCache.find((f) => f.id === favoritoId);
+  const ingredientes = fav?.metadata?.ingredientes || [];
+  if (ingredientes.length === 0) { showToast('Este favorito no tiene ingredientes registrables.'); return; }
+
+  Api.favoritosMarcarUso(favoritoId).catch(() => {});
+
+  const tipo = tipoComidaSegunHora();
+  let ultimoXP = null;
+  for (const ing of ingredientes) {
+    const res = await Api.registrarComida({ alimento_id: ing.alimento_id, tipo_comida: tipo, gramos: ing.gramos, origen: 'manual' });
+    if (res.success) ultimoXP = res.data.xp;
+  }
+
+  if (ultimoXP) await handleXPResult(ultimoXP);
+  await renderNutricion();
+  showToast(`${escapeHtml(fav.nombre_personalizado)} agregado a tu día.`);
+}
+
 async function eliminarFavorito(favoritoId) {
   const res = await Api.favoritosEliminar(favoritoId);
   if (!res.success) { showToast(res.message); return; }
@@ -2761,7 +3398,7 @@ function abrirModalGuardarFavorito(alimentoId, nombre, gramos, unidad, calorias,
 
       <div class="field">
         <label for="favorito-nombre">Nombre personalizado</label>
-        <input type="text" id="favorito-nombre" value="${nombre.replace(/"/g, '&quot;')}" placeholder="Mi licuado..." maxlength="120" />
+        <input type="text" id="favorito-nombre" value="${escapeHtml(nombre)}" placeholder="Mi licuado..." maxlength="120" />
       </div>
 
       <div style="background:var(--bg-secondary); border-radius:8px; padding:12px; margin-bottom:16px; font-size:12px;">
@@ -2771,11 +3408,12 @@ function abrirModalGuardarFavorito(alimentoId, nombre, gramos, unidad, calorias,
 
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" onclick="cerrarModalGuardarFavorito()">Cancelar</button>
-        <button type="button" class="btn btn-primary" onclick="confirmarGuardarFavorito(${alimentoId || 'null'}, '${nombre.replace(/'/g, "\\'")}', ${gramos}, '${unidad}', ${calorias}, ${proteinas}, ${carbohidratos}, ${grasas}, ${esCompuesto ? 1 : 0})">Guardar</button>
+        <button type="button" class="btn btn-primary" onclick="confirmarGuardarFavorito(${alimentoId || 'null'}, ${htmlJsString(nombre)}, ${gramos}, ${htmlJsString(unidad)}, ${calorias}, ${proteinas}, ${carbohidratos}, ${grasas}, ${esCompuesto ? 1 : 0})">Guardar</button>
       </div>
     </div>
   `;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) cerrarModalGuardarFavorito(); });
+  overlay.dataset.metadata = metadata ? JSON.stringify(metadata) : '';
   document.body.appendChild(overlay);
   document.getElementById('favorito-nombre').focus();
 }
@@ -2789,6 +3427,10 @@ async function confirmarGuardarFavorito(alimentoId, nombreOriginal, gramos, unid
   const nombrePersonalizado = document.getElementById('favorito-nombre').value.trim();
   if (!nombrePersonalizado) { showToast('Ingresá un nombre.'); return; }
 
+  const modal = document.getElementById('modal-guardar-favorito');
+  const metadataRaw = modal?.dataset.metadata;
+  const metadata = metadataRaw ? JSON.parse(metadataRaw) : null;
+
   cerrarModalGuardarFavorito();
 
   const res = await Api.favoritosCrear({
@@ -2801,7 +3443,8 @@ async function confirmarGuardarFavorito(alimentoId, nombreOriginal, gramos, unid
     carbohidratos_base: parseFloat(carbohidratos),
     grasas_base: parseFloat(grasas),
     es_compuesto: !!esCompuesto,
-    origen: 'manual',
+    origen: metadata ? 'escaner_ia' : 'manual',
+    metadata: metadata,
   });
 
   if (!res.success) { showToast(res.message); return; }
@@ -2841,7 +3484,7 @@ async function abrirGeneradorRecetas(regenerar = false) {
 
   if (!res.success) {
     recetaActualModal = null;
-    contenido.innerHTML = `<p style="color:var(--text-secondary);">No se pudo generar la receta: ${res.message}</p>`;
+    contenido.innerHTML = `<p style="color:var(--text-secondary);">No se pudo generar la receta: ${escapeHtml(res.message)}</p>`;
     return;
   }
 
@@ -2852,8 +3495,8 @@ async function abrirGeneradorRecetas(regenerar = false) {
 
   contenido.innerHTML = `
     <div style="text-align:left;">
-      <h4 style="font-size:16px; margin-bottom:8px;">${receta.nombre}</h4>
-      <p style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">${receta.descripcion}</p>
+      <h4 style="font-size:16px; margin-bottom:8px;">${escapeHtml(receta.nombre)}</h4>
+      <p style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">${escapeHtml(receta.descripcion)}</p>
 
       <div style="background:var(--bg-secondary); border-radius:8px; padding:12px; margin-bottom:16px;">
         <div style="font-size:12px;"><strong>${receta.porciones}</strong> porciones</div>
@@ -2865,14 +3508,14 @@ async function abrirGeneradorRecetas(regenerar = false) {
       <div style="margin-bottom:16px;">
         <h5 style="font-size:13px; font-weight:600; margin-bottom:8px;">Ingredientes:</h5>
         <ul style="margin:0; padding-left:20px; font-size:13px; line-height:1.6;">
-          ${(receta.ingredientes || []).map(ing => `<li>${ing.nombre} — ${Math.round(ing.gramos)}g</li>`).join('')}
+          ${(receta.ingredientes || []).map(ing => `<li>${escapeHtml(ing.nombre)} — ${Math.round(ing.gramos)}g</li>`).join('')}
         </ul>
       </div>
 
       <div style="margin-bottom:16px;">
         <h5 style="font-size:13px; font-weight:600; margin-bottom:8px;">Pasos:</h5>
         <ol style="margin:0; padding-left:20px; font-size:13px; line-height:1.6;">
-          ${(receta.pasos || []).map(paso => `<li style="margin-bottom:6px;">${paso}</li>`).join('')}
+          ${(receta.pasos || []).map(paso => `<li style="margin-bottom:6px;">${escapeHtml(paso)}</li>`).join('')}
         </ol>
       </div>
 
@@ -2913,11 +3556,12 @@ function cerrarModalReceta() {
 // =====================================================================
 // PESTAÑA 3 — Escáner / Cámara IA Nutricional
 // =====================================================================
-function renderEscaner() {
-  const container = document.getElementById('view-escaner');
+async function renderEscaner() {
+  const container = document.getElementById('view-nutricion'); // Renderiza en nutrición
   container.innerHTML = `
     <div class="view-header">
       <div><span class="eyebrow">Visión computacional</span><h1>Escáner Nutricional IA</h1></div>
+      <button type="button" class="btn btn-ghost" onclick="cambiarNutricionTab('diario')">Volver al diario</button>
     </div>
 
     <div class="card">
@@ -3244,7 +3888,7 @@ function mostrarAlimentosDetectados(data) {
   tipoComidaCamaraSeleccionado = tipoComidaSegunHora();
 
   resultBox.innerHTML = `
-    <p class="row-label" style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">${Icon('sparkles', { size: 13 })}${data.descripcion}</p>
+    <p class="row-label" style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">${Icon('sparkles', { size: 13 })}${escapeHtml(data.descripcion)}</p>
     <p style="font-size:12.5px;font-weight:600;margin:2px 0 10px;">Alimentos detectados</p>
     <div id="items-detectados-camara"></div>
     <div class="field" style="margin-top:4px;">
@@ -3257,6 +3901,7 @@ function mostrarAlimentosDetectados(data) {
     </div>
     <div class="macro-preview" id="total-plato-camara"></div>
     <div class="modal-actions" style="margin-top:10px;">
+      <button type="button" class="btn btn-ghost" onclick="guardarPlatoComoFavorito()">Guardar plato como favorito</button>
       <button type="button" class="btn btn-primary" onclick="agregarPlatoDetectado()">Agregar a mi día</button>
     </div>
   `;
@@ -3281,9 +3926,9 @@ function renderItemsDetectadosCamara() {
     if (item.alimentoId === null) {
       return `
         <div class="meal-item" style="flex-direction:column;align-items:stretch;gap:6px;margin-bottom:10px;">
-          <span style="font-size:12.5px;font-weight:600;">${item.nombre} <span style="color:var(--text-secondary);font-weight:400;">(~${Math.round(item.gramos)}g)</span></span>
+          <span style="font-size:12.5px;font-weight:600;">${escapeHtml(item.nombre)} <span style="color:var(--text-secondary);font-weight:400;">(~${Math.round(item.gramos)}g)</span></span>
           <span style="font-size:11.5px;color:var(--text-secondary);">No encontramos información nutricional automática para este alimento — buscalo manualmente:</span>
-          <input type="text" placeholder="Buscar ${item.nombre.replace(/"/g, '')}..." oninput="buscarReemplazoItemCamara(${idx}, this.value)" />
+          <input type="text" placeholder="Buscar ${escapeHtml(item.nombre)}..." oninput="buscarReemplazoItemCamara(${idx}, this.value)" />
           <div id="candidatos-reemplazo-${idx}"></div>
         </div>
       `;
@@ -3293,7 +3938,7 @@ function renderItemsDetectadosCamara() {
     return `
       <div class="meal-item" style="flex-direction:column;align-items:stretch;gap:6px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-size:12.5px;font-weight:600;">${item.nombre}</span>
+          <span style="font-size:12.5px;font-weight:600;">${escapeHtml(item.nombre)}</span>
           <div style="display:flex;gap:10px;align-items:center;">
             <button type="button" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--color-warning);padding:0;" onclick="guardarFavoritoDesdeCamara(${idx})" title="Guardar como favorito">♡</button>
             <button type="button" class="btn-link-editar" onclick="editarItemDetectadoCamara(${idx})">Editar</button>
@@ -3382,6 +4027,43 @@ function guardarFavoritoDesdeCamara(idx) {
   );
 }
 
+/** Guarda TODO el plato detectado (varios alimentos) como un único
+ *  favorito compuesto — ej. "Mi licuado de siempre": el escaneo se
+ *  reconstruye después desde metadata.ingredientes sin volver a llamar
+ *  a Gemini. Cada ingrediente conserva su alimento_id y gramos para
+ *  poder re-registrarse individualmente (registrar_comida.php exige
+ *  alimento_id real, no admite macros sueltas). */
+function guardarPlatoComoFavorito() {
+  const items = itemsDetectadosCamara.filter((i) => i.alimentoId !== null && i.gramos > 0);
+  if (items.length === 0) { showToast('No hay alimentos con información nutricional para guardar.'); return; }
+
+  let calorias = 0, proteinas = 0, carbohidratos = 0, grasas = 0, gramosTotal = 0;
+  const ingredientes = items.map((item) => {
+    const factor = item.gramos / 100;
+    calorias += item.calorias100g * factor;
+    proteinas += item.proteinas100g * factor;
+    carbohidratos += item.carbohidratos100g * factor;
+    grasas += item.grasas100g * factor;
+    gramosTotal += item.gramos;
+    return { alimento_id: item.alimentoId, nombre: item.nombre, gramos: Math.round(item.gramos) };
+  });
+
+  const nombreSugerido = items.length === 1 ? items[0].nombre : `${items[0].nombre} y ${items.length - 1} más`;
+
+  abrirModalGuardarFavorito(
+    null,
+    nombreSugerido,
+    Math.round(gramosTotal),
+    'g',
+    calorias,
+    proteinas,
+    carbohidratos,
+    grasas,
+    true,
+    { ingredientes }
+  );
+}
+
 let debounceTimerReemplazo = null;
 function buscarReemplazoItemCamara(idx, query) {
   clearTimeout(debounceTimerReemplazo);
@@ -3395,7 +4077,7 @@ function buscarReemplazoItemCamara(idx, query) {
 
     contenedor.innerHTML = res.data.slice(0, 5).map((a) => `
       <div class="meal-item scanner-candidate" onclick="asignarReemplazoItemCamara(${idx}, ${a.id}, ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})">
-        <span>${a.nombre_mostrado}</span><span class="cal">${a.calorias_por_100g} kcal/100g</span>
+        <span>${escapeHtml(a.nombre_mostrado)}</span><span class="cal">${a.calorias_por_100g} kcal/100g</span>
       </div>
     `).join('');
   }, 300);
@@ -3494,8 +4176,8 @@ async function mostrarResultadoIA(predicciones, { silencioso = false } = {}) {
   }
 
   candidatosBox.innerHTML = res.data.map((a) => `
-    <div class="meal-item scanner-candidate" onclick="abrirModalRegistroComida(${a.id}, '${a.nombre_mostrado.replace(/'/g, "\\'")}', ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})">
-      <span>${a.nombre_mostrado}</span><span class="cal">${a.calorias_por_100g} kcal/100g</span>
+    <div class="meal-item scanner-candidate" onclick="abrirModalRegistroComida(${a.id}, ${htmlJsString(a.nombre_mostrado)}, ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})">
+      <span>${escapeHtml(a.nombre_mostrado)}</span><span class="cal">${a.calorias_por_100g} kcal/100g</span>
     </div>
   `).join('');
 
@@ -3515,8 +4197,8 @@ async function buscarAlimentosEscaner(query) {
   if (!res.success || res.data.length === 0) { container.innerHTML = `<div class="empty-state">Sin resultados</div>`; return; }
 
   container.innerHTML = res.data.map((a) => `
-    <div class="meal-item" style="cursor:pointer;" onclick="abrirModalRegistroComida(${a.id}, '${a.nombre_mostrado.replace(/'/g, "\\'")}', ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})">
-      <span>${a.nombre_mostrado}</span><span class="cal">${a.calorias_por_100g} kcal/100g</span>
+    <div class="meal-item" style="cursor:pointer;" onclick="abrirModalRegistroComida(${a.id}, ${htmlJsString(a.nombre_mostrado)}, ${a.calorias_por_100g}, ${a.proteinas}, ${a.carbohidratos}, ${a.grasas})">
+      <span>${escapeHtml(a.nombre_mostrado)}</span><span class="cal">${a.calorias_por_100g} kcal/100g</span>
     </div>
   `).join('');
 }
@@ -3526,9 +4208,10 @@ async function buscarAlimentosEscaner(query) {
 // =====================================================================
 let ligaActiva = 'bronce';
 let miUsuarioId = null;
+let rankingModo = 'global'; // 'global' | 'amigos'
 
 async function renderRanking() {
-  const container = document.getElementById('view-ranking');
+  const container = document.getElementById('view-perfil'); // Renderiza en perfil
   const [rankingRes, tiendaRes, sesionRes] = await Promise.all([Api.ranking(), Api.tiendaGet(), Api.sesion()]);
   const coins = sesionRes.success ? sesionRes.data.nutri_coins : 0;
   miUsuarioId = sesionRes.success ? sesionRes.data.id : null;
@@ -3536,39 +4219,108 @@ async function renderRanking() {
   container.innerHTML = `
     <div class="view-header">
       <div><span class="eyebrow">Comunidad</span><h1>Ranking & Tienda</h1></div>
+      <button type="button" class="btn btn-ghost" onclick="loadView('perfil')">Volver a Perfil</button>
     </div>
 
-    <div class="card">
-      <h3 class="row-label" style="font-size:15px;margin-bottom:14px;">${Icon('trophy', { size: 17 })}Ligas NutriFit</h3>
-      <div class="league-tabs" id="league-tabs"></div>
-      <div id="leaderboard-list"></div>
+    <div class="card" id="comunidad-ranking" tabindex="-1">
+      <h3 class="row-label" style="font-size:15px;margin-bottom:14px;">${Icon('trophy', { size: 17 })}Ranking</h3>
+      <div id="ranking-global">
+        <div class="league-tabs" id="league-tabs"></div>
+        <div id="leaderboard-list"></div>
+      </div>
     </div>
 
-    <div class="card" style="margin-top:18px;">
+    <div class="card comunidad-amigos" id="comunidad-amigos" tabindex="-1" style="margin-top:18px;">
       <h3 class="row-label" style="font-size:15px;margin-bottom:14px;">${Icon('users', { size: 17 })}Amigos</h3>
-      <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <div class="comunidad-qr-acciones">
+        <button class="btn btn-ghost" style="width:auto;padding:12px 16px;" onclick="AmigosQR.miQR()">${Icon('qr-code', { size: 14 })}Mi QR</button>
+        <button class="btn btn-ghost" style="width:auto;padding:12px 16px;" onclick="AmigosQR.escanear()">${Icon('scan', { size: 14 })}Escanear QR</button>
+      </div>
+      <div class="comunidad-agregar-amigo">
         <input type="email" id="input-email-amigo" placeholder="Email de tu amigo" />
         <button class="btn btn-primary" style="width:auto;padding:12px 16px;" onclick="agregarAmigo()">Agregar</button>
       </div>
       <div id="lista-amigos"></div>
+      <h4 class="comunidad-ranking-amigos-titulo">Clasificación entre amigos</h4>
+      <div id="ranking-amigos"></div>
     </div>
 
     <div class="card" style="margin-top:18px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <h3 class="row-label" style="font-size:15px;">${Icon('store', { size: 17 })}Tienda NutriFit</h3>
-        <span class="mono row-label" style="font-size:13.5px;font-weight:700;color:var(--color-xp);">${NutriCoinIcon(15)}${coins.toLocaleString('es-AR')} NutriCoins</span>
+        <span id="tienda-coins" class="mono row-label" style="font-size:13.5px;font-weight:700;color:var(--color-xp);">${NutriCoinIcon(15)}${coins.toLocaleString('es-AR')} NutriCoins</span>
       </div>
-      <p style="font-size:12px;margin-bottom:14px;">Ganás 100 NutriCoins cada vez que subís de nivel.</p>
+      <p style="font-size:12px;margin-bottom:14px;">Ganás 100 NutriCoins por cada nivel nuevo alcanzado, una sola vez.</p>
       <div class="grid-3" id="tienda-grid"></div>
     </div>
   `;
 
+  rankingModo = 'global';
   if (rankingRes.success) {
     ligaActiva = rankingRes.data.mi_liga;
     renderLeagueTabs(rankingRes.data);
   }
-  if (tiendaRes.success) renderTienda(tiendaRes.data);
-  renderAmigos();
+  else document.getElementById('leaderboard-list').textContent = rankingRes.message || 'No se pudo cargar el ranking.';
+  if (tiendaRes.success) await renderTienda(tiendaRes.data);
+  else document.getElementById('tienda-grid').textContent = tiendaRes.message || 'No se pudo cargar la tienda.';
+  await renderAmigos();
+  await renderRankingAmigos();
+}
+
+/** Alterna el ranking entre global (ligas) y amigos. El ranking de amigos
+ *  se carga la primera vez que se entra (no en el render inicial). */
+function cambiarModoRanking(modo) {
+  rankingModo = modo;
+  document.getElementById('modo-global')?.classList.toggle('active', modo === 'global');
+  document.getElementById('modo-amigos')?.classList.toggle('active', modo === 'amigos');
+  const globalEl = document.getElementById('ranking-global');
+  const amigosEl = document.getElementById('ranking-amigos');
+  if (globalEl) globalEl.style.display = modo === 'global' ? '' : 'none';
+  if (amigosEl) amigosEl.style.display = modo === 'amigos' ? '' : 'none';
+  if (modo === 'amigos') renderRankingAmigos();
+}
+
+/** Leaderboard sólo del usuario + sus amigos aceptados (mismo endpoint de
+ *  ranking con scope=amigos; no duplica la lógica de ligas). */
+async function renderRankingAmigos() {
+  const cont = document.getElementById('ranking-amigos');
+  if (!cont) return;
+  cont.innerHTML = `<div class="scanner-loading"><div class="scanner-spinner"></div><span>Cargando ranking de amigos…</span></div>`;
+
+  const res = await Api.ranking('amigos');
+  if (!res.success) {
+    cont.innerHTML = `<div class="empty-state">No se pudo cargar el ranking de amigos.</div>`;
+    return;
+  }
+  if (!res.data.tiene_amigos) {
+    cont.innerHTML = `
+      <div class="empty-state" style="display:flex;flex-direction:column;gap:12px;align-items:center;padding:22px 12px;">
+        <span style="color:var(--text-secondary);">${Icon('users', { size: 30 })}</span>
+        <div style="text-align:center;">
+          <p style="font-weight:600;margin:0 0 4px;">Todavía no tenés amigos</p>
+          <p style="font-size:13px;color:var(--text-secondary);margin:0;">Agregá amigos para competir en XP y comparar su progreso.</p>
+        </div>
+        <button type="button" class="btn btn-primary" style="width:auto;padding:10px 18px;" onclick="irAAgregarAmigo()">Agregar un amigo</button>
+      </div>`;
+    return;
+  }
+
+  cont.innerHTML = res.data.tabla.map((u) => `
+    <div class="leaderboard-row ${u.es_tu_usuario ? 'me' : ''}">
+      <span class="rank">#${u.posicion}</span>
+      <span class="name">${escapeHtml(u.nombre)}</span>
+      <span class="xp">${u.xp_total} XP · Nv.${u.nivel}</span>
+    </div>
+  `).join('');
+}
+
+/** Lleva el foco al input de agregar amigo (misma vista, card de abajo). */
+function irAAgregarAmigo() {
+  const input = document.getElementById('input-email-amigo');
+  if (input) {
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => input.focus(), 300);
+  }
 }
 
 function renderLeagueTabs(data) {
@@ -3588,7 +4340,7 @@ function renderLeagueTabs(data) {
 function switchLiga(liga) {
   ligaActiva = liga;
   document.querySelectorAll('.league-tab').forEach((t) => t.classList.remove('active'));
-  event.target.classList.add('active');
+  document.querySelectorAll('.league-tab').forEach((t, i) => t.classList.toggle('active', ['bronce', 'plata', 'oro', 'diamante'][i] === liga));
   renderLeaderboardList(window._rankingData.ligas[liga]);
 }
 
@@ -3601,7 +4353,7 @@ function renderLeaderboardList(usuarios) {
   list.innerHTML = usuarios.map((u, idx) => `
     <div class="leaderboard-row ${miUsuarioId !== null && String(u.id) === String(miUsuarioId) ? 'me' : ''}">
       <span class="rank">#${idx + 1}</span>
-      <span class="name">${u.nombre}</span>
+      <span class="name">${escapeHtml(u.nombre)}</span>
       <span class="xp">${u.xp_total} XP · Nv.${u.nivel}</span>
     </div>
   `).join('');
@@ -3610,6 +4362,11 @@ function renderLeaderboardList(usuarios) {
 async function renderAmigos() {
   const res = await Api.amigosGet();
   const container = document.getElementById('lista-amigos');
+  if (!container) return;
+  if (!res.success) {
+    container.textContent = res.message || 'No se pudieron cargar los amigos.';
+    return;
+  }
   if (!res.success || res.data.length === 0) {
     container.innerHTML = `<div class="empty-state">Aún no agregaste amigos.</div>`;
     return;
@@ -3621,13 +4378,13 @@ async function renderAmigos() {
       : '';
     return `
       <div class="leaderboard-row">
-        <span class="name">${a.nombre} ${estadoLabel}</span>
+        <span class="name">${escapeHtml(a.nombre)} ${estadoLabel}</span>
         ${esSolicitudRecibida ? `
           <span style="display:flex;gap:6px;">
             <button class="btn btn-primary" style="width:auto;padding:6px 12px;font-size:12px;" onclick="responderAmigo(${a.relacion_id}, true)">Aceptar</button>
             <button class="btn btn-ghost" style="width:auto;padding:6px 12px;font-size:12px;" onclick="responderAmigo(${a.relacion_id}, false)">Rechazar</button>
           </span>
-        ` : `<span class="xp">Nv.${a.nivel}</span>`}
+        ` : `<span class="xp">${Number(a.xp_total).toLocaleString('es-AR')} XP · Nv.${a.nivel}</span>`}
       </div>
     `;
   }).join('');
@@ -3636,7 +4393,10 @@ async function renderAmigos() {
 async function responderAmigo(relacionId, aceptar) {
   const res = aceptar ? await Api.amigosAceptar(relacionId) : await Api.amigosRechazar(relacionId);
   showToast(res.message);
-  if (res.success) await renderAmigos();
+  if (res.success) {
+    await renderAmigos();
+    await renderRankingAmigos();
+  }
 }
 
 async function agregarAmigo() {
@@ -3654,49 +4414,63 @@ const ICONOS_TIENDA_POR_TIPO = {
   ropa_avatar: 'shirt', accesorio_avatar: 'glasses', aura: 'sparkles', marco_perfil: 'image', titulo: 'tag', cupon: 'ticket',
 };
 
-function renderTienda(items) {
+async function renderTienda(items) {
   const grid = document.getElementById('tienda-grid');
+  if (!grid) { if (!items) await abrirComunidad(); return; }
 
-  grid.innerHTML = items.map((item) => {
+  // Si se llama sin items (desde renderPerfil), cargar del backend
+  if (!items) {
+    grid.innerHTML = `<div class="scanner-loading"><div class="scanner-spinner"></div><span>Cargando tienda…</span></div>`;
+    const res = await Api.tiendaGet();
+    if (!res.success) {
+      grid.textContent = res.message || 'No se pudo cargar la tienda.';
+      return;
+    }
+    items = res.data;
+  }
+
+  const EQUIPABLES = ['ropa_avatar', 'aura', 'marco_perfil', 'titulo'];
+
+  const gridHTML = items.map((item) => {
     let boton;
-    if (!item.poseido) {
+    if (item.tipo === 'accesorio_avatar') {
+      boton = '<button class="btn btn-ghost" disabled>Próximamente</button>';
+    } else if (!item.poseido) {
       boton = `<button class="btn btn-primary" onclick="canjearItem(${item.id})">Canjear</button>`;
-    } else if (item.tipo === 'cupon' || item.tipo === 'titulo') {
-      // Cupones/títulos no se "equipan" en el avatar, sólo se poseen.
+    } else if (item.tipo === 'accesorio_avatar') {
+      boton = `<button class="btn btn-ghost" disabled>Próximamente</button>`;
+    } else if (!EQUIPABLES.includes(item.tipo)) {
       boton = `<button class="btn btn-ghost" disabled>Ya lo tienes</button>`;
     } else {
       boton = `<button class="btn ${item.equipado ? 'btn-primary' : 'btn-ghost'}" onclick="equiparItem(${item.id})">
-        ${item.equipado ? `${Icon('check', { size: 13 })} Equipado` : 'Equipar'}
+        ${item.equipado ? `${Icon('check', { size: 13 })} Desequipar` : 'Equipar'}
       </button>`;
     }
     return `
       <div class="shop-item card">
         <div class="icon-box">${Icon(ICONOS_TIENDA_POR_TIPO[item.tipo] || 'gift', { size: 26 })}</div>
-        <div class="name">${item.nombre}</div>
+        <div class="name">${escapeHtml(item.nombre)}</div>
         <div class="price row-label" style="justify-content:center;">${item.costo_coins > 0 ? `${NutriCoinIcon(13)}${item.costo_coins} coins` : `${item.costo_xp} XP`}</div>
         ${boton}
       </div>
     `;
   }).join('');
+
+  grid.innerHTML = gridHTML;
 }
 
-async function canjearItem(itemId) {
-  const res = await Api.tiendaCanjear(itemId);
-  showToast(res.message);
-  if (res.success) {
-    const tiendaRes = await Api.tiendaGet();
-    if (tiendaRes.success) renderTienda(tiendaRes.data);
-  }
+const operacionesTienda = new Set();
+async function operarTienda(itemId, accion) {
+  if (operacionesTienda.has(itemId)) return;
+  operacionesTienda.add(itemId);
+  try {
+    const res = await (accion === 'canjear' ? Api.tiendaCanjear(itemId) : Api.tiendaEquipar(itemId));
+    showToast(res.message, {kind:res.success ? 'success' : 'error'});
+    if (res.success) { await refrescarTiendaYColeccion(); if (document.getElementById('modal-personalizar-avatar')) await cargarPersonalizarAvatar(); }
+  } finally { operacionesTienda.delete(itemId); }
 }
-
-async function equiparItem(itemId) {
-  const res = await Api.tiendaEquipar(itemId);
-  showToast(res.message);
-  if (res.success) {
-    const tiendaRes = await Api.tiendaGet();
-    if (tiendaRes.success) renderTienda(tiendaRes.data);
-  }
-}
+async function canjearItem(itemId) { return operarTienda(itemId, 'canjear'); }
+async function equiparItem(itemId) { return operarTienda(itemId, 'equipar'); }
 
 // =====================================================================
 // Editar perfil — misma tabla/endpoint que el onboarding (perfiles_
@@ -3897,5 +4671,5 @@ async function guardarEdicionPerfil() {
 
   document.getElementById('modal-editar-perfil').remove();
   showToast('Perfil actualizado correctamente.');
-  await renderProgreso();
+  await renderPerfil();
 }

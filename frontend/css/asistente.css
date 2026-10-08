@@ -1,0 +1,51 @@
+.asistente-page{max-width:860px;margin:auto;min-width:0}.asistente-page p{line-height:1.55}.asistente-history{padding:16px;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:16px;margin:16px 0}.asistente-history label{display:block;margin-bottom:8px}.asistente-history select{display:block;width:100%;min-width:0;margin-bottom:12px;background:var(--bg-inset);color:var(--text-primary);padding:10px;border:1px solid var(--border-subtle);border-radius:8px}.asistente-history>div,.asistente-actions{display:flex;gap:8px;flex-wrap:wrap}.asistente-suggestions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.asistente-suggestions button{white-space:normal;text-align:left;max-width:100%;font-size:13px}.asistente-messages{display:flex;flex-direction:column;gap:12px;min-width:0}.asistente-message{padding:14px;border-radius:14px;border:1px solid var(--border-subtle);background:var(--bg-elevated);max-width:95%;overflow-wrap:anywhere;min-width:0}.asistente-message--user{align-self:flex-end;background:var(--bg-inset)}.asistente-message p{white-space:pre-wrap;margin:8px 0}.asistente-message small{display:block;color:var(--text-secondary);margin-bottom:8px}.asistente-compose{margin-top:18px;padding:14px;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:14px;min-width:0}.asistente-compose label{display:block;margin-bottom:8px}.asistente-compose textarea{display:block;width:100%;box-sizing:border-box;resize:vertical;max-height:200px;min-height:88px;font:inherit;font-size:16px;line-height:1.5;background:var(--bg-inset);color:var(--text-primary);border:1px solid var(--border-subtle);border-radius:8px;padding:10px;margin-bottom:10px}.asistente-voice-note{font-size:12px;color:var(--text-secondary)}#asistente-status{overflow-wrap:anywhere;margin-bottom:0}.asistente-actions [hidden]{display:none}.asistente-page .btn{min-height:40px}.asistente-page [hidden]{display:none}@media(max-width:420px){.asistente-message{max-width:100%;padding:12px}.asistente-history,.asistente-compose{padding:12px}.asistente-page{padding-bottom:12px}.asistente-actions .btn{flex:1 1 auto}.asistente-history>div .btn{flex:1 1 120px}}
+.asistente-compose{scroll-margin-bottom:100px}.asistente-compose textarea{scroll-margin-bottom:110px}
+
+/* Sólo el panel del asistente: no modifica la navegación global. */
+#view-asistente.active{overscroll-behavior:contain}
+.asistente-privacy{border:1px solid var(--border-subtle);border-radius:12px;padding:12px;margin:12px 0;font-size:13px}
+.asistente-privacy summary{cursor:pointer;font-weight:600;color:var(--text-primary)}
+.asistente-privacy label{display:flex;align-items:flex-start;gap:8px;margin-top:12px}
+.asistente-privacy input{accent-color:var(--accent-green);flex:none;margin-top:3px}
+.asistente-privacy p{font-size:12px;color:var(--text-secondary);margin:8px 0}
+.asistente-messages{max-height:clamp(200px,42dvh,530px);overflow-y:auto;overscroll-behavior:contain;padding:2px;scroll-behavior:smooth}
+.asistente-message--assistant{align-self:flex-start;width:95%;box-sizing:border-box}
+.asistente-message--user{border-color:rgba(145,230,30,.22);max-width:88%}
+.asistente-thinking{color:var(--text-secondary);font-size:13px}
+.asistente-thinking span{display:inline-block;animation:asistente-pulse 1.1s ease-in-out infinite}
+.asistente-proposal{margin-top:12px;border-top:1px solid var(--border-subtle);padding-top:12px}
+.asistente-proposal p{font-size:13px}
+.asistente-proposal small{white-space:pre-wrap}
+.asistente-proposal label{display:block;margin:12px 0;font-size:13px}
+.asistente-proposal select{display:block;width:100%;margin-top:6px;border:1px solid var(--border-subtle);border-radius:8px;background:var(--bg-inset);color:var(--text-primary);padding:10px;font:inherit}
+.asistente-proposal .btn{white-space:normal;width:100%}
+.asistente-total{font-weight:600;color:var(--text-primary)}
+.asistente-compose{position:sticky;bottom:0;z-index:1}
+@keyframes asistente-pulse{50%{opacity:.35}}
+@media(max-width:480px){.asistente-history{padding:10px;margin:10px 0}.asistente-suggestions{gap:6px;margin-bottom:10px}.asistente-suggestions .btn{font-size:12px;padding:8px 10px}.asistente-messages{max-height:40dvh;min-height:120px}.asistente-compose{padding:10px;margin-top:10px}.asistente-compose textarea{min-height:72px;max-height:130px}.asistente-voice-note{margin:8px 0}}
+@media(prefers-reduced-motion:reduce){.asistente-thinking span{animation:none}.asistente-messages{scroll-behavior:auto}}
+
+/* Prioridad al diálogo: el historial y las sugerencias se abren cuando hacen falta. */
+#view-asistente.active{display:flex;flex-direction:column;overflow:hidden;gap:8px}
+#view-asistente>.asistente-close{align-self:flex-start;flex:none}
+#view-asistente .asistente-page{display:flex;flex-direction:column;width:100%;flex:1;min-height:0}
+.asistente-page>h1{font-size:24px;margin:2px 0}
+.asistente-page>p{font-size:12px;margin:4px 0 8px;color:var(--text-secondary)}
+.asistente-history,.asistente-privacy,.asistente-starters{flex:none;padding:10px;margin:4px 0;font-size:12px}
+.asistente-history summary,.asistente-starters summary{cursor:pointer;font-weight:600}
+.asistente-history[open],.asistente-privacy[open],.asistente-starters[open]{max-height:24dvh;overflow:auto}
+.asistente-history[open]>label{margin-top:8px}
+.asistente-history .btn{font-size:12px;padding:8px;min-height:36px}
+.asistente-history select{margin-bottom:8px;padding:8px}
+.asistente-suggestions{margin:8px 0 0}
+.asistente-starters{border:1px solid var(--border-subtle);border-radius:12px}
+#view-asistente .asistente-messages{flex:1;min-height:100px;max-height:none;padding:4px 0}
+.asistente-compose{position:static;flex:none;margin-top:8px;padding:10px}
+.asistente-compose label{font-size:12px;margin-bottom:6px}
+.asistente-compose textarea{min-height:70px;font-size:16px}
+.asistente-voice-note{font-size:10px;line-height:1.4!important;margin:6px 0}
+@media(max-width:880px){#view-asistente.active{height:88dvh;max-height:88dvh;box-sizing:border-box}.asistente-page{padding-bottom:0}.asistente-actions .btn{font-size:12px;min-height:36px;padding:8px 10px}.asistente-page>h1{font-size:22px}}
+.asistente-actions>.btn{width:auto;flex:0 1 auto}
+.asistente-actions>.btn-primary{flex:1 1 auto}
+#view-asistente>button{width:auto;align-self:flex-start;min-height:36px;padding:8px 14px;flex:none}
+@media(max-width:480px){.asistente-compose textarea{min-height:60px;height:68px;margin-bottom:8px}.asistente-compose{padding:8px}.asistente-history,.asistente-privacy,.asistente-starters{padding:8px;margin:3px 0}.asistente-page>.section-label{font-size:10px}}
