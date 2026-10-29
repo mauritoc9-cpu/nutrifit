@@ -42,9 +42,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $db->commit();
     respond(true, ['registro' => $registro, 'xp' => $xpOtorgado, 'gamificacion' => $gamificacion], 'Vaso de agua registrado.');
     } catch (Throwable $e) {
-        if ($db->inTransaction()) $db->rollBack();
-        respond(false, null, 'No se pudo registrar el agua.', 500);
-    }
+    if ($db->inTransaction()) $db->rollBack();
+
+    error_log('[NutriFit][hidratacion] ' . get_class($e) . ': ' . $e->getMessage());
+
+    respond(false, null, 'No se pudo registrar el agua.', 500);
+}
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
