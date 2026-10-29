@@ -162,7 +162,7 @@ async function abrirAsistenteFlotante() {
   await Asistente.render();
   const cerrar = document.createElement('button');
   cerrar.type = 'button';
-  cerrar.className = 'btn btn-ghost';
+  cerrar.className = 'btn btn-ghost asistente-close';
   cerrar.textContent = 'Cerrar asistente';
   cerrar.onclick = cerrarAsistenteFlotante;
   panel.prepend(cerrar);
@@ -3119,8 +3119,8 @@ async function renderNutricion() {
     </div>
 
     <div class="segmented" style="margin-bottom:18px;">
-      <button type="button" class="segmented-btn${nutricionTab === 'diario' ? ' active' : ''}" onclick="cambiarNutricionTab('diario')">📋 Diario</button>
-      <button type="button" class="segmented-btn${nutricionTab === 'escaner' ? ' active' : ''}" onclick="cambiarNutricionTab('escaner')">📸 Escáner</button>
+      <button type="button" class="segmented-btn${nutricionTab === 'diario' ? ' active' : ''}" onclick="cambiarNutricionTab('diario')">${Icon('clipboard-list', { size: 17 })} Diario</button>
+      <button type="button" class="segmented-btn${nutricionTab === 'escaner' ? ' active' : ''}" onclick="cambiarNutricionTab('escaner')">${Icon('scan', { size: 17 })} Escáner</button>
     </div>
 
     <div class="grid-2">

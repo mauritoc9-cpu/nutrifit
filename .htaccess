@@ -11,3 +11,10 @@ RewriteRule ^backend/(?!api(?:/|$)) - [F,END,NC]
 <FilesMatch "(?i)\.(sql|log|ini|ya?ml|toml|bak|sh)$|^(composer\.(json|lock)|Procfile|README\.md|AGENTS\.md)$">
     Require all denied
 </FilesMatch>
+
+# Revalidar la página de entrada; los recursos llevan versión explícita.
+<IfModule mod_headers.c>
+  <FilesMatch "^(index\.html|landing\.html)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>

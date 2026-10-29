@@ -1595,3 +1595,13 @@ details[open] > summary .chev-caret { transform: rotate(180deg); }
   .avatar-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
   .avatar-tab span { white-space:normal; overflow:visible; text-overflow:clip; }
 }
+
+/* Controles de cuenta móviles: accesibles sin hover y sin superponer el contenido. */
+.mobile-account-bar{display:none}
+@media(max-width:880px){
+  .mobile-account-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;background:var(--bg-primary);border-bottom:1px solid var(--border-subtle)}
+  .mobile-account-bar .mobile-theme-toggle{position:static;display:inline-flex;margin:0;flex:none;align-items:center;justify-content:center;width:40px;height:40px}
+  .mobile-logout-btn{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:8px 12px;background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-subtle);border-radius:10px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .mobile-logout-btn:focus-visible{outline:2px solid var(--color-lima);outline-offset:3px}
+}
+.segmented-btn .icon-svg{flex:none;vertical-align:middle;margin-right:5px}

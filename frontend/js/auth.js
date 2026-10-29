@@ -130,10 +130,43 @@ async function handleResetearPassword(event) {
   showScreen('screen-login');
 }
 
+let logoutBusy = false;
 async function handleLogout() {
-  await Api.logout();
-  location.reload();
+  if (logoutBusy) return;
+  logoutBusy = true;
+  const buttons = document.querySelectorAll('[data-logout], .logout-btn');
+  buttons.forEach(button => button.disabled = true);
+  try {
+    const result = await Api.logout();
+    if (!result.success) { showToast(result.message || 'No se pudo cerrar la sesión. Volvé a intentar.'); return; }
+    try { if (typeof Asistente !== 'undefined') Asistente.salir(); } catch {}
+    try { if (typeof stopCamera === 'function') stopCamera(); } catch {}
+    try { if (typeof Explorar !== 'undefined') Explorar.salir(); } catch {}
+    window.speechSynthesis?.cancel();
+    window.NutriFitUser = null;
+    window.NutriFitPendingUser = null;
+    document.querySelectorAll('.view, .modal-overlay').forEach(el => el.replaceChildren());
+    document.getElementById('screen-app')?.classList.add('hidden');
+    document.querySelectorAll('.user-chip .name, .user-chip .level').forEach(el => el.textContent = '');
+    try {
+      localStorage.removeItem('nutrifit_recordatorios_log');
+      Object.keys(sessionStorage).filter(key => key.startsWith('nutrifit_')).forEach(key => sessionStorage.removeItem(key));
+    } catch {}
+    location.replace(new URL('../', location.href).href);
+  } finally {
+    logoutBusy = false;
+    buttons.forEach(button => button.disabled = false);
+  }
 }
+window.addEventListener('pageshow', async event => {
+  if (!event.persisted) return;
+  const app = document.getElementById('screen-app');
+  if (!app || app.classList.contains('hidden')) return;
+  app.classList.add('hidden');
+  const session = await Api.sesion();
+  if (!session.success) location.replace(new URL('../', location.href).href);
+  else app.classList.remove('hidden');
+});
 
 // ---------- Onboarding Wizard (7 pasos) ----------
 const OB_SEGMENTOS = ['biometria', 'actividad', 'dieta', 'alergias'];
@@ -522,6 +555,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     showScreen('screen-onboarding');
     resetWizard();
   } else {
-    showScreen('screen-login');
+    const acceso = new URLSearchParams(window.location.search).get('acceso');
+    showScreen(acceso === 'registro' ? 'screen-registro' : 'screen-login');
   }
 });
